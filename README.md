@@ -9,7 +9,7 @@
 UI 全原生，逻辑全共享：Swift/Kotlin 只写界面和平台适配，文件系统、传输引擎、索引都用同一份 Rust 内核（通过 UniFFI 暴露）。
 
 ```
-crates/vfs-core     统一虚拟文件系统 + local（jailed）/ WebDAV 后端
+crates/vfs-core     统一虚拟文件系统 + local（jailed）/ WebDAV / SMB 后端
 crates/engine       传输引擎：预扫描、分块、进度、取消、冲突策略
 crates/index        SQLite 元数据索引 + 搜索
 crates/stream       回环 HTTP+Range 媒体流服务（供 AVPlayer/ExoPlayer 直接播放任意后端）
@@ -85,8 +85,9 @@ open apps/ios/SuperFilesApp.xcodeproj
 - [x] SQLite 索引 + 文件名搜索
 - [x] SwiftUI / Compose 可运行骨架
 - [x] WebDAV 后端（vfs-core 层：PROPFIND / Range GET / PUT、PATCH 与 Content-Range 部分写协商、受限重试；mock-server 单测 + Apache/Nextcloud 真机矩阵）
+- [x] SMB 后端（vfs-core 层：**原生随机读写**/SET_END_OF_FILE、NT 状态码错误映射、受限重试 + 断连重挂；id↔UNC 单测 + Samba 真机矩阵）
 - [x] 回环 HTTP+Range 流媒体服务（`StreamServer::url_for(id)` 拿到可播 URL；token 保护、206/416 语义、并发 seek）
-- [ ] SMB / SFTP / 云盘后端（M2/M3）
+- [ ] SFTP / 云盘后端（M2/M3）
 - [ ] WebDAV 的 FFI 连接管理与真机兼容矩阵（M2）
 - [ ] iOS File Provider 扩展、Android DocumentsProvider（M2）
 - [ ] 媒体库、播放、投屏（M4）
@@ -100,4 +101,6 @@ open apps/ios/SuperFilesApp.xcodeproj
 - `docs/02-platform-matrix.md` — 各平台能力边界与落地方式
 - `docs/03-vfs-api.md` — 内核 API 契约（实现后端必读）
 - `docs/04-roadmap.md` — M0–M5 任务清单
+- `docs/05-icons.md` — 双端文件图标规范（fallback 链 + 特化表）
+- `docs/06-design-system.md` — 双端设计系统基准（tokens、组件状态表、TV 焦点模型）
 - `docs/adr/` — 架构决策记录
