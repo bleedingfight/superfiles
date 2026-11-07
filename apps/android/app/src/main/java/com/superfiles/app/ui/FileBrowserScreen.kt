@@ -14,7 +14,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -178,7 +177,7 @@ private fun FileRow(entry: Entry, onClick: () -> Unit, onDelete: () -> Unit) {
         supportingContent = { Text(subtitle(entry)) },
         leadingContent = {
             Icon(
-                imageVector = if (isDir) Icons.Default.Folder else Icons.Default.InsertDriveFile,
+                imageVector = FileIcon.of(entry),
                 contentDescription = null,
                 tint = if (isDir) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )

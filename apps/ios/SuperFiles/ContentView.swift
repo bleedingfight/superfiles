@@ -154,18 +154,7 @@ private struct FileRow: View {
     }
 
     private var iconName: String {
-        switch entry.kind {
-        case .directory: return "folder.fill"
-        case .symlink: return "link"
-        default:
-            if let mime = entry.mime {
-                if mime.hasPrefix("image/") { return "photo" }
-                if mime.hasPrefix("video/") { return "film" }
-                if mime.hasPrefix("audio/") { return "music.note" }
-                if mime.hasPrefix("text/") { return "doc.text" }
-            }
-            return "doc"
-        }
+        FileIcon.symbolName(for: entry)
     }
 
     private var detail: String {
