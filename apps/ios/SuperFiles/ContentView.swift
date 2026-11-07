@@ -70,9 +70,9 @@ struct ContentView: View {
         .listStyle(.plain)
         .overlay {
             if store.entries.isEmpty && !store.isLoading {
-                VStack(spacing: 8) {
+                VStack(spacing: Spacing.s2) {
                     Image(systemName: "folder")
-                        .font(.system(size: 40))
+                        .font(.system(size: Spacing.emptyIconSize))
                         .foregroundStyle(.secondary)
                     Text("这里还没有文件").font(.headline)
                     Text("点右上角「建立索引」，或新建文件夹")
@@ -130,11 +130,11 @@ private struct FileRow: View {
     let entry: Entry
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Spacing.s3) {
             Image(systemName: iconName)
                 .font(.title3)
                 .foregroundStyle(entry.kind == .directory ? Color.accentColor : Color.secondary)
-                .frame(width: 28)
+                .frame(width: Spacing.rowIconSlot)
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.name)
                     .lineLimit(1)

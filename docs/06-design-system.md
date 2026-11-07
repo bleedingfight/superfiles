@@ -105,7 +105,7 @@ extended FAB：图标 + 文案（`建立索引` / `索引 N 项`）。State = id
 
 ## 7. 现状差距（v0 → 待办）
 
-- [ ] `Dimens.kt` / `Spacing.swift` 常量抽取（当前 4 处硬编码 12/16/28/40）
+- [x] `Dimens.kt` / `Spacing.swift` 常量抽取（FileRow/搜索框/空态已接入；2/6pt 两个栅格外数值保留待设计决策）
 - [ ] FileRow 隐藏/只读态渲染（依赖 M1 功能）
 - [ ] TV 焦点样式与 D-pad 走查（M5）
 - [ ] 截图回归（Paparazzi / swift-snapshot-testing）接入 `just check`

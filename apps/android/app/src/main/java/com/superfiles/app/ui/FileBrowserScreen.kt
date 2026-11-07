@@ -40,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.superfiles.app.BrowserState
@@ -102,7 +101,7 @@ fun FileBrowserScreen(viewModel: VfsViewModel = viewModel()) {
                     onValueChange = viewModel::search,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(horizontal = Dimens.Space4, vertical = Dimens.Space1),
                     singleLine = true,
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     placeholder = { Text("搜索已索引文件") },
@@ -196,7 +195,7 @@ private fun EmptyState(state: BrowserState, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(Dimens.Space2),
     ) {
         Text("这里还没有文件", style = MaterialTheme.typography.titleMedium)
         Text(
