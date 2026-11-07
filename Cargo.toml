@@ -27,12 +27,15 @@ thiserror = "2"
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "fs", "sync", "time", "macros"] }
 
-# Network backends (vfs-core feature gate: webdav; sftp / smb to be re-added
-# with their backends - russh 0.65 and smb 0.12 currently conflict over
-# curve25519-dalek, see crates/vfs-core/Cargo.toml).
+# Network backends (vfs-core feature gates: webdav / smb)
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "charset"] }
 quick-xml = "0.42"
 percent-encoding = "2"
+# NOTE: sspi's curve25519-dalek RC pin only exists for macOS/iOS targets, so
+# smb 0.12 resolves fine on Linux/Android; it only collides with russh ^0.65
+# (sftp) when both target Apple platforms.
+smb = "0.12"
+futures-util = "0.3"
 
 [profile.release]
 lto = "thin"

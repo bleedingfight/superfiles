@@ -6,13 +6,12 @@ license.workspace = true
 rust-version.workspace = true
 description = "Portable virtual filesystem abstractions for Super Files"
 
-# NOTE: russh 0.65 (wants curve25519-dalek ^5) and smb 0.12 (pins sspi ->
-# curve25519-dalek =5.0.0-rc.1) cannot resolve in one lockfile today, so the
-# not-yet-implemented sftp/smb deps are removed rather than left to break
-# `cargo fetch` for everyone. Re-add them together with the SFTP/SMB backends.
+# NOTE: russh (sftp) rejoins later; on Apple targets it would fight smb's sspi
+# over curve25519-dalek (russh wants ^5, sspi pins =5.0.0-rc.1).
 [features]
-default = ["webdav"]
+default = ["webdav", "smb"]
 webdav = ["dep:reqwest", "dep:quick-xml", "dep:percent-encoding"]
+smb = ["dep:smb", "dep:futures-util"]
 
 [dependencies]
 thiserror.workspace = true
@@ -21,6 +20,9 @@ tokio.workspace = true
 reqwest = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }
 percent-encoding = { workspace = true, optional = true }
+smb = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
 
 [dev-dependencies]
 tiny_http = "0.12"
+env_logger = "0.11"

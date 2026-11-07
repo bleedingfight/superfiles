@@ -12,3 +12,5 @@ tokio.workspace = true
 
 [dev-dependencies]
 reqwest = { workspace = true }
+# Pulls VFS network backends in for cross-crate live tests (env-gated).
+vfs-core = { workspace = true, features = ["smb"] }
