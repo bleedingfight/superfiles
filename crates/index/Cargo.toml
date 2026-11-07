@@ -1,0 +1,11 @@
+[package]
+name = "sfiles-index"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "SQLite metadata index for Super Files"
+
+[dependencies]
+vfs-core.workspace = true
+rusqlite = { version = "0.32", features = ["bundled"] }

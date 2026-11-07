@@ -1,0 +1,25 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Android
+/apps/android/.gradle/
+/apps/android/build/
+/apps/android/app/build/
+/apps/android/local.properties
+/apps/android/.idea/
+/apps/android/app/src/main/jniLibs/
+*.hprof
+
+# iOS
+/apps/ios/Generated/
+/apps/ios/Frameworks/
+/apps/ios/SuperFilesApp.xcodeproj/
+/apps/ios/*.xcworkspace/
+xcuserdata/
+DerivedData/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

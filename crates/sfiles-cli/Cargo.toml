@@ -1,0 +1,17 @@
+[package]
+name = "sfiles-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Tiny CLI to exercise the Super Files core without any UI"
+
+[[bin]]
+name = "sfiles"
+path = "src/main.rs"
+
+[dependencies]
+vfs-core.workspace = true
+sfiles-engine.workspace = true
+sfiles-index.workspace = true
+tokio.workspace = true

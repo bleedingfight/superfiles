@@ -1,0 +1,19 @@
+[package]
+name = "sfiles-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "UniFFI surface of Super Files (Swift + Kotlin)"
+
+[lib]
+name = "superfiles"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+vfs-core.workspace = true
+sfiles-engine.workspace = true
+sfiles-index.workspace = true
+uniffi.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

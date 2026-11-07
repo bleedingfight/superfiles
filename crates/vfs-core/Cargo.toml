@@ -1,0 +1,12 @@
+[package]
+name = "vfs-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Portable virtual filesystem abstractions for Super Files"
+
+[dependencies]
+thiserror.workspace = true
+async-trait.workspace = true
+tokio.workspace = true

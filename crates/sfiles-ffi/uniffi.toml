@@ -1,0 +1,7 @@
+[bindings.kotlin]
+package_name = "com.superfiles.core"
+cdylib_name = "superfiles"
+
+[bindings.swift]
+module_name = "SuperFilesCore"
+ffi_module_name = "SuperFilesCoreFFI"
