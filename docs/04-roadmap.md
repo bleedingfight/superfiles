@@ -31,7 +31,7 @@
 
 ## M2 — 网络存储
 
-- [ ] SMB2/3 后端（NTLM，后续 Kerberos；中文文件名编码矩阵）。注意：`smb` 0.12 与 `russh` 0.65 的 `curve25519-dalek` 版本冲突，需先解依赖
+- [x] SMB2/3 后端（NTLMv2、原生随机读写/truncate/rename、`set_info` 语义删除、futures 流式列目录、断连重挂；真机矩阵 `tests/smb_live.rs`：Samba 4.12 全 pass）。注意：与 `russh` 的 dalek 冲突仅在 Apple 平台存在，SFTP 接入时需解
 - [ ] SFTP 后端（`russh` + `russh-sftp`，同上依赖冲突）
 - [x] WebDAV 后端（vfs-core 层：PROPFIND/Range GET/PUT，`PATCH X-Update-Range`↔`PUT Content-Range` 自动协商，mock-server 单测 + 真机矩阵种子 `tests/webdav_live.rs`）
 - [x] 真机矩阵首轮：Apache mod_dav 全pass（协商到 Content-Range PUT）；Nextcloud 27 浏览/整文件CRUD pass，但**禁用两种部分写方言**（PATCH 走自家 chunking v2 → 500；Content-Range PUT 显式 400）→ 如实报 Unsupported，大文件分块上传需引擎侧临时文件策略（见下条）
