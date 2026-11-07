@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Super Files · 样式参考稿 v0</title>
+<style>
+  /* ===== tokens（与 design/tokens.json 一一对应，改值只改这里） ===== */
+  :root {
+    --primary:#6750A4; --on-surface:#1D1B20; --on-surface-variant:#49454F;
+    --outline:#79747E; --error:#B3261E; --surface:#FEF7FF; --surface-variant:#E7E0EC;
+    --focus-ring:#6750A4; --focus-bg:#E6E0E9;
+    --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px;
+    --space-6:24px; --space-8:32px;
+    --row-icon:28px; --radius-card:12px;
+  }
+  [data-theme="dark"] {
+    --on-surface:#E6E0E9; --on-surface-variant:#CAC4D0;
+    --outline:#938F99; --surface:#141218; --surface-variant:#49454F;
+    --focus-bg:#49454F;
+  }
+  * { box-sizing: border-box; margin: 0; font-family: -apple-system, "PingFang SC", "Noto Sans SC", sans-serif; }
+  body { background: var(--surface); color: var(--on-surface); padding: var(--space-8); max-width: 880px; margin: auto; }
+  h1 { font-size: 22px; margin-bottom: var(--space-2); }
+  h2 { font-size: 15px; color: var(--on-surface-variant); margin: var(--space-8) 0 var(--space-4); text-transform: uppercase; letter-spacing: .08em; }
+  .note { color: var(--on-surface-variant); font-size: 13px; margin-bottom: var(--space-6); }
+  #themeBtn { float: right; border: 1px solid var(--outline); background: none; color: var(--on-surface); border-radius: 20px; padding: 6px 16px; cursor: pointer; }
+
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-2); }
+  .swatch { border-radius: var(--radius-card); overflow: hidden; border: 1px solid var(--outline); }
+  .swatch .paint { height: 56px; }
+  .swatch .meta { padding: var(--space-2) var(--space-3); font-size: 12px; background: var(--surface); }
+  .swatch .meta b { display: block; font-weight: 600; }
+  .swatch .meta span { color: var(--on-surface-variant); }
+
+  .spaces { display: flex; align-items: flex-end; gap: var(--space-3); }
+  .space-cell { text-align: center; font-size: 11px; color: var(--on-surface-variant); }
+  .space-bar { background: var(--primary); opacity: .8; border-radius: 2px; margin-bottom: 4px; }
+
+  .types p { margin: var(--space-2) 0; }
+  .t-filename { font-size: 16px; font-weight: 400; }
+  .t-secondary { font-size: 12px; color: var(--on-surface-variant); }
+  .t-appbar { font-size: 20px; font-weight: 500; }
+  .t-empty-title { font-size: 15px; font-weight: 500; }
+  .t-empty-body { font-size: 13px; color: var(--on-surface-variant); }
+  .t-footer { font-size: 11px; color: var(--on-surface-variant); }
+
+  /* ===== FileRow 组件（docs/06 状态表的可视化） ===== */
+  .row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-4); border-radius: var(--radius-card); }
+  .row .icon { width: var(--row-icon); height: var(--row-icon); border-radius: 6px; flex: none;
+               display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .row .texts { flex: 1; min-width: 0; }
+  .row .name { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .sub { font-size: 12px; color: var(--on-surface-variant); }
+  .row.state-default { outline: 1px solid rgba(0,0,0,.06); background: var(--surface); }
+  .row.state-pressed { background: color-mix(in srgb, var(--primary) 10%, var(--surface)); }
+  .row.state-focused { outline: 2px solid var(--focus-ring); background: var(--focus-bg); }
+  .row-label { font-size: 11px; color: var(--outline); margin: var(--space-3) 0 var(--space-1); }
+
+  .empty { text-align: center; padding: var(--space-8) 0; }
+  .empty .bigicon { font-size: 40px; opacity: .4; margin-bottom: var(--space-2); }
+
+  .dialog { max-width: 320px; margin: auto; background: var(--surface); border: 1px solid var(--outline);
+            border-radius: var(--radius-card); padding: var(--space-6); }
+  .dialog .actions { text-align: right; margin-top: var(--space-6); }
+  .dialog button { border: none; background: none; color: var(--primary); font-size: 14px; font-weight: 600; padding: var(--space-2) var(--space-3); cursor: pointer; }
+  .dialog button.danger { color: var(--error); }
+</style>
+</head>
+<body>
+
+<button id="themeBtn" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">☀ / 🌙</button>
+
+<h1>Super Files · 样式参考稿 v0</h1>
+<p class="note">
+  与 <code>design/tokens.json</code>、<code>docs/06-design-system.md</code> 一一对应。
+  颜色列为<b>演示基线</b>（产品运行时颜色跟随系统动态色/系统蓝）。Figma 摆稿时按此校准，
+  改动先变 tokens，再回头更新本页与文档。
+</p>
+
+<h2>色彩角色</h2>
+<div class="swatches">
+  <div class="swatch"><div class="paint" style="background:var(--primary)"></div><div class="meta"><b>primary</b><span>目录图标·主操作·FAB</span></div></div>
+  <div class="swatch"><div class="paint" style="background:var(--on-surface)"></div><div class="meta"><b>onSurface</b><span>文件名·正文</span></div></div>
+  <div class="swatch"><div class="paint" style="background:var(--on-surface-variant)"></div><div class="meta"><b>onSurfaceVariant</b><span>次信息</span></div></div>
+  <div class="swatch"><div class="paint" style="background:var(--outline)"></div><div class="meta"><b>outline</b><span>弱化提示</span></div></div>
+  <div class="swatch"><div class="paint" style="background:var(--error)"></div><div class="meta"><b>error</b><span>删除/危险</span></div></div>
+  <div class="swatch"><div class="paint" style="background:var(--focus-bg);border:2px solid var(--focus-ring);height:52px"></div><div class="meta"><b>focus (TV)</b><span>边框+背景（禁缩放）</span></div></div>
+</div>
+
+<h2>间距（4 基栅）</h2>
+<div class="spaces" id="spaces"></div>
+
+<h2>字阶</h2>
+<div class="types">
+  <p class="t-appbar">AppBar 标题 / titleLarge · headline</p>
+  <p class="t-filename">文件名单行 body / bodyLarge：<span style="color:var(--on-surface-variant)">2024 年度财务决算报告（终稿）.pdf</span></p>
+  <p class="t-secondary">次信息 caption · bodySmall：4.2 MB · pdf · 2026/11/07</p>
+  <p class="t-empty-title">空态主文案 / titleMedium</p>
+  <p class="t-empty-body">空态辅文案 / footnote · bodySmall</p>
+  <p class="t-footer">底部状态栏 / caption2 · labelSmall —— 2 项 · 已索引 128 项</p>
+</div>
+
+<h2>组件：FileRow（状态表）</h2>
+<p class="row-label">默认</p>
+<div class="row state-default"><div class="icon" style="background:#EADDFF;color:#4F378A">🗂️</div><div class="texts"><div class="name">家庭相册</div><div class="sub">文件夹</div></div></div>
+<div class="row state-default"><div class="icon" style="background:#FCE7F3;color:#9D174D">🖼️</div><div class="texts"><div class="name">IMG_20261107_富士山日出.jpg</div><div class="sub">4.2 MB · jpeg · 11/07</div></div></div>
+<p class="row-label">按下（平台原生水波，仅示意色）</p>
+<div class="row state-pressed"><div class="icon" style="background:#FEF3C7;color:#92400E">📄</div><div class="texts"><div class="name">预算表（终稿）.pdf</div><div class="sub">1.1 MB · pdf · 11/06</div></div></div>
+<p class="row-label">TV 聚焦（合同：2dp primary 边框 + surfaceVariant 背景，<b>不缩放</b>）</p>
+<div class="row state-focused"><div class="icon" style="background:#EDE0D4;color:#6B3E26">🎬</div><div class="texts"><div class="name">纪录片 · 地球脉动.S02E01.2160p.mkv</div><div class="sub">7.3 GB · matroska · 11/05</div></div></div>
+
+<h2>组件：删除确认</h2>
+<div class="dialog">
+  <p class="t-appbar" style="font-size:17px;margin-bottom:8px">删除</p>
+  <p style="font-size:14px">确定删除「预算表（终稿）.pdf」？</p>
+  <div class="actions"><button>取消</button><button class="danger">删除</button></div>
+</div>
+
+<h2>组件：空态</h2>
+<div class="empty">
+  <div class="bigicon">🗂️</div>
+  <p class="t-empty-title">这里还没有文件</p>
+  <p class="t-empty-body" style="margin-top:4px">点右上角「建立索引」，或新建文件夹</p>
+</div>
+
+<script>
+  // 间距条从 tokens 生成，避免两处维护
+  const spaces = [["space-1",4],["space-2",8],["space-3",12],["space-4",16],["space-6",24],["space-8",32]];
+  document.getElementById("spaces").innerHTML = spaces.map(([k,v]) =>
+    `<div class="space-cell"><div class="space-bar" style="width:${v*2}px;height:${v}px;margin-left:auto;margin-right:auto"></div>${k}<br>${v}</div>`
+  ).join("") +
+  `<div class="space-cell"><div class="space-bar" style="width:56px;height:28px;margin-left:auto;margin-right:auto"></div>icon-slot<br>28</div>`;
+</script>
+
+</body>
+</html>

@@ -103,4 +103,5 @@ open apps/ios/SuperFilesApp.xcodeproj
 - `docs/04-roadmap.md` — M0–M5 任务清单
 - `docs/05-icons.md` — 双端文件图标规范（fallback 链 + 特化表）
 - `docs/06-design-system.md` — 双端设计系统基准（tokens、组件状态表、TV 焦点模型）
+- `design/` — Figma 对接物：`tokens.json` (W3C DTCG)、`style-guide.html`（可视参考稿）、`screens.md`（画面清单）
 - `docs/adr/` — 架构决策记录
