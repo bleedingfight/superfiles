@@ -9,7 +9,7 @@
 UI 全原生，逻辑全共享：Swift/Kotlin 只写界面和平台适配，文件系统、传输引擎、索引都用同一份 Rust 内核（通过 UniFFI 暴露）。
 
 ```
-crates/vfs-core     统一虚拟文件系统 + local 后端（jailed）
+crates/vfs-core     统一虚拟文件系统 + local（jailed）/ WebDAV 后端
 crates/engine       传输引擎：预扫描、分块、进度、取消、冲突策略
 crates/index        SQLite 元数据索引 + 搜索
 crates/sfiles-ffi   UniFFI 出口（Swift/Kotlin 绑定源）
@@ -21,10 +21,12 @@ apps/android        Jetpack Compose 应用（同 APK 支持 TV）
 docs                架构、平台能力矩阵、API 契约、路线图、ADR
 ```
 
+模块布局采用 2018+ 风格（`backends.rs` + `backends/`，不使用 `mod.rs`）。
+
 ## 快速开始（任意 Linux/macOS，无需 Xcode/Android SDK）
 
 ```bash
-cargo test                 # 11+ 个内核测试
+cargo test                 # 30+ 个内核/引擎测试
 cargo build
 ./scripts/gen-bindings.sh  # 重新生成 Swift/Kotlin 绑定
 
@@ -81,7 +83,9 @@ open apps/ios/SuperFilesApp.xcodeproj
 - [x] 传输引擎：预扫描总量、进度、取消、覆盖/跳过/重命名
 - [x] SQLite 索引 + 文件名搜索
 - [x] SwiftUI / Compose 可运行骨架
-- [ ] SMB / SFTP / WebDAV / 云盘后端（M2/M3）
+- [x] WebDAV 后端（vfs-core 层：PROPFIND / Range GET / PUT、PATCH 与 Content-Range 部分写协商、受限重试；mock-server 单测覆盖）
+- [ ] SMB / SFTP / 云盘后端（M2/M3）
+- [ ] WebDAV 的 FFI 连接管理与真机兼容矩阵（M2）
 - [ ] iOS File Provider 扩展、Android DocumentsProvider（M2）
 - [ ] 媒体库、播放、投屏（M4）
 - [ ] Android TV 焦点优化、iPad 多窗口（M5）

@@ -31,9 +31,10 @@
 
 ## M2 — 网络存储
 
-- [ ] SMB2/3 后端（NTLM，后续 Kerberos；中文文件名编码矩阵）
-- [ ] SFTP 后端（`russh` + `russh-sftp`）
-- [ ] WebDAV 后端（Nextcloud/群晖兼容）
+- [ ] SMB2/3 后端（NTLM，后续 Kerberos；中文文件名编码矩阵）。注意：`smb` 0.12 与 `russh` 0.65 的 `curve25519-dalek` 版本冲突，需先解依赖
+- [ ] SFTP 后端（`russh` + `russh-sftp`，同上依赖冲突）
+- [x] WebDAV 后端（vfs-core 层，Nextcloud/群晖 SabreDAV 风格：PROPFIND/Range GET/PUT，`PATCH X-Update-Range`↔`PUT Content-Range` 自动协商，mock-server 单测）
+- [ ] WebDAV 接入 FFI 连接管理；真机兼容矩阵（Nextcloud / 群晖 / 威联通 / 中文文件名）
 - [ ] 设备发现：mDNS + WS-Discovery
 - [ ] iOS File Provider 扩展（Replicated，iOS 16+）
 - [ ] Android `DocumentsProvider`
