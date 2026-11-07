@@ -25,7 +25,7 @@
 - [ ] 冲突对话框（覆盖/跳过/重命名/全部应用）
 - [ ] Android：Foreground Service + 通知进度
 - [ ] iOS：HTTP 后端的 background URLSession
-- [ ] FTS5 搜索（中文分词/拼音）替换 LIKE
+- [x] FTS5 搜索（中文分词/拼音）替换 LIKE（trigram：中文子串 + 全拼/首字母拼音 + 英文，默认 FTS5、短查询回退 LIKE；`source` 列为 M2 聚合索引打底）
 
 验收：1 GB 文件传输、杀进程后恢复、断网下能看缓存目录。
 

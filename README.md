@@ -82,7 +82,7 @@ open apps/ios/SuperFilesApp.xcodeproj
 - [x] VFS 抽象、URI 规范、能力矩阵、本地后端（含 `..` 逃逸防护）
 - [x] 分块读写、fd 直通（`export_to_fd` / `import_from_fd`）
 - [x] 传输引擎：预扫描总量、进度、取消、覆盖/跳过/重命名
-- [x] SQLite 索引 + 文件名搜索
+- [x] SQLite 索引 + FTS5 文件名搜索（trigram 子串：中文/英文/混合；拼音全拼与首字母 sidecar；大小写不敏感；可按 source 聚合过滤）
 - [x] SwiftUI / Compose 可运行骨架
 - [x] WebDAV 后端（vfs-core 层：PROPFIND / Range GET / PUT、PATCH 与 Content-Range 部分写协商、受限重试；mock-server 单测 + Apache/Nextcloud 真机矩阵）
 - [x] SMB 后端（vfs-core 层：**原生随机读写**/SET_END_OF_FILE、NT 状态码错误映射、受限重试 + 断连重挂；id↔UNC 单测 + Samba 真机矩阵）

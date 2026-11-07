@@ -9,3 +9,7 @@ description = "SQLite metadata index for Super Files"
 [dependencies]
 vfs-core.workspace = true
 rusqlite = { version = "0.32", features = ["bundled"] }
+# Pinyin sidecar for CJK file names (see pinyin_index() in src/lib.rs for
+# the rationale): pure Rust, zero runtime deps, compile-time tables. Only
+# the "plain" (tone-less) form is needed for search.
+pinyin = { version = "0.11", default-features = false, features = ["plain"] }
