@@ -4,6 +4,7 @@ members = [
     "crates/vfs-core",
     "crates/engine",
     "crates/index",
+    "crates/stream",
     "crates/sfiles-ffi",
     "crates/sfiles-bindgen",
     "crates/sfiles-cli",
@@ -19,6 +20,7 @@ rust-version = "1.89"
 vfs-core = { path = "crates/vfs-core" }
 sfiles-engine = { path = "crates/engine" }
 sfiles-index = { path = "crates/index" }
+sfiles-stream = { path = "crates/stream" }
 
 uniffi = "0.32"
 thiserror = "2"

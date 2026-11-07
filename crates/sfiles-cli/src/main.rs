@@ -112,6 +112,19 @@ async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 print_entry(&entry);
             }
         }
+        "serve" => {
+            let root = need(args, 1, "sfiles serve <root> [id]")?;
+            let vfs = Arc::new(Vfs::with_local_root(root)?);
+            let id = args
+                .get(2)
+                .cloned()
+                .unwrap_or_else(|| vfs.local_root().to_string());
+            let server = sfiles_stream::StreamServer::start(vfs).await?;
+            println!("{}", server.url_for(&id));
+            println!("(serving until Ctrl+C; open the URL in any player)");
+            tokio::signal::ctrl_c().await?;
+            server.shutdown().await;
+        }
         "-h" | "--help" | "help" => print_help(),
         other => {
             eprintln!("unknown command: {other}");
@@ -172,6 +185,7 @@ USAGE:
   sfiles cp <root> <src> <dest-dir> copy a file or tree
   sfiles index <root> <db.sqlite>   index a tree into SQLite
   sfiles search <db.sqlite> <query> search the index
+  sfiles serve <root> [id]          stream an entry over loopback HTTP+Range
 
 `root` is the jail the local backend is allowed to touch."
     );

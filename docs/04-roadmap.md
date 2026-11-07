@@ -39,7 +39,7 @@
 - [ ] 设备发现：mDNS + WS-Discovery
 - [ ] iOS File Provider 扩展（Replicated，iOS 16+）
 - [ ] Android `DocumentsProvider`
-- [ ] 本地回环 HTTP 服务（Range）供 AVPlayer/ExoPlayer 播远程视频
+- [x] 本地回环 HTTP 服务（Range）供 AVPlayer/ExoPlayer 播远程视频（`crates/stream`：token 保护 URL、206/416、HEAD、并发连接；FFI 暴露随 WebDAV 连接管理一起做）
 - [ ] 连接管理 UI（凭据存 Keychain/Keystore）
 
 验收：手机能在系统「文件」App 里浏览 NAS；电视能直接播 NAS 视频。

@@ -12,6 +12,7 @@ UI 全原生，逻辑全共享：Swift/Kotlin 只写界面和平台适配，文�
 crates/vfs-core     统一虚拟文件系统 + local（jailed）/ WebDAV 后端
 crates/engine       传输引擎：预扫描、分块、进度、取消、冲突策略
 crates/index        SQLite 元数据索引 + 搜索
+crates/stream       回环 HTTP+Range 媒体流服务（供 AVPlayer/ExoPlayer 直接播放任意后端）
 crates/sfiles-ffi   UniFFI 出口（Swift/Kotlin 绑定源）
 crates/sfiles-cli   桌面 CLI（冒烟测试 / 未来终端端）
 bindings/swift      uniffi 生成的 Swift
@@ -83,7 +84,8 @@ open apps/ios/SuperFilesApp.xcodeproj
 - [x] 传输引擎：预扫描总量、进度、取消、覆盖/跳过/重命名
 - [x] SQLite 索引 + 文件名搜索
 - [x] SwiftUI / Compose 可运行骨架
-- [x] WebDAV 后端（vfs-core 层：PROPFIND / Range GET / PUT、PATCH 与 Content-Range 部分写协商、受限重试；mock-server 单测覆盖）
+- [x] WebDAV 后端（vfs-core 层：PROPFIND / Range GET / PUT、PATCH 与 Content-Range 部分写协商、受限重试；mock-server 单测 + Apache/Nextcloud 真机矩阵）
+- [x] 回环 HTTP+Range 流媒体服务（`StreamServer::url_for(id)` 拿到可播 URL；token 保护、206/416 语义、并发 seek）
 - [ ] SMB / SFTP / 云盘后端（M2/M3）
 - [ ] WebDAV 的 FFI 连接管理与真机兼容矩阵（M2）
 - [ ] iOS File Provider 扩展、Android DocumentsProvider（M2）
