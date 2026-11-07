@@ -10,47 +10,64 @@ Paparazzi（Android）/ swift-snapshot-testing（iOS）**同 spec 截图**（M5 
 
 ## 1. 色彩
 
-不自建色板：Android 用 Material You 动态取色（`Theme.kt` 已接），iOS 用系统
-accent + 语义色。语义角色两端必须同义使用：
+**品牌基线以 Figma「superfiles」稿实测值为准**（`design/tokens.json` 是唯一机器可读真相源）：
+暖米白底 `#F8F7F4`、墨色 `#292E35`、次色 `#777D86`、弱化 `#A4A8AE`、卡片 `#FFFFFF`、
+信息卡 `#EAF0F8`。运行时 Android 仍跟随 Material You、iOS 跟随系统 accent——
+基线色只作 Figma 摆稿与动态取色不可用场景的回退。语义角色两端必须同义使用：
 
 | 用途 | 角色 |
 |---|---|
-| 目录图标、主操作（FAB）、链接态 | `primary` / `.accentColor` |
-| 文件名 | `onSurface` / `.primary` |
-| 次要信息（尺寸、日期、mime） | `onSurfaceVariant` / `.secondary` |
-| 弱化提示（chevron、空态图标） | `outline` / `.tertiary` |
-| 危险操作（删除） | `error` / `.red` |
+| 目录图标、主操作（FAB）、链接态 | `primary`（演示值 `#466DA6`，**决策①待定**，备选暖棕 `#A18460`） |
+| 文件名 | `onSurface`（`#292E35`） |
+| 次要信息（尺寸、日期、mime） | `onSurfaceVariant`（`#777D86`） |
+| 弱化提示（chevron、空态图标） | `outline`（`#A4A8AE`） |
+| 危险操作（删除） | `error` |
+| 在线/成功态（ServerCard 状态点） | `success`（`#6F8D7D`） |
 | 只读标记（未来 badge） | `tertiary` / `.orange` |
 
-深色模式：不写死颜色就不破（已遵守）；TV 用高对比 M3 深色，不做动态取色自定义（墙取色在电视上不可靠）。
+深色模式：**Figma 稿当前只有浅色系**，深色 token 留 v0.2 由设计补齐；
+TV 用高对比深色，不做动态取色自定义（墙取色在电视上不可靠）。
 
 ## 2. 间距刻度（4 基栅）
 
-只允许取以下值（`Dimens` 常量抽取待办，见 §7）：
+只允许取以下值（Figma 稿里的 5/7/13 均属 AI 噪点，已 snap 进栅）：
 
 | token | dp 或 pt | 典型用途 |
 |---|---|---|
 | `space-1` | 4 | 文字行内微调 |
 | `space-2` | 8 | 空态元素间距、垂直紧凑留白 |
 | `space-3` | 12 | FileRow 图标–文字间距 |
-| `space-4` | 16 | 屏幕左右安全边距、搜索框外距 |
-| `space-6` | 24 | 分组间隔（预留） |
+| `space-4` | 16 | 组件内 padding |
+| `space-6` | 24 | **屏幕左右安全边距**（Figma 实测；`safe-margin` 语义别名） |
 | `space-8` | 32 | 段落级空白（预留） |
 
 FileRow 图标槽固定 **28**（iOS `.frame(width: 28)`；Android 对齐同值）。
+FileRow 标准行高 74（名称 14w500 + 元信息 10w400 两行自洽）。
+
+## 2.5 圆角
+
+| token | dp | 用途 |
+|---|---|---|
+| `radius-s` | 10 | 芯片 / 排序器 / 小卡 |
+| `radius-m` | 14 | 常规卡片（文件夹、详情预览） |
+| `radius-l` | 20 | 主卡（用量卡） |
+| `radius-pill` | 999 | 搜索框 / chip / CTA |
 
 ## 3. 字号
 
-平台体系字阶，不自定义大小：
+字栈 `Noto Sans SC → PingFang SC → system-ui`（中文优先；数字允许 Inter/系统数字字）：
 
-| 用途 | Android M3 | iOS |
-|---|---|---|
-| 文件名/标题行 | `bodyLarge` | `.body` |
-| 次信息（尺寸·日期） | `bodySmall` / `bodyMedium` | `.caption` |
-| AppBar 标题 | `titleLarge` | `.headline`（inline displayMode） |
-| 空态主文案 | `titleMedium` | `.headline` |
-| 空态辅文案 | `bodySmall` | `.footnote` |
-| 底部状态栏 | `labelSmall` | `.caption2` |
+| 用途 | 规格 |
+|---|---|
+| AppBar 标题 | 17 w700 |
+| 文件名 | **14 w500**（Figma 实测；74 行高自洽，高于平台默认列表密度） |
+| 次信息（尺寸·日期·mime） | 10 w400 |
+| 分组标题（我的文件夹/最近打开） | 12 w500 |
+| 空态主/辅文案 | 15 w500 / 13 w400 |
+| 底部状态栏 | 10 w400 |
+
+Android 实现落在 M3 体系对应位阶上（允许 ±1pt 对齐平台字阶）；超出此表的新字
+级需先在 `design/tokens.json` 登记。
 
 ## 4. 组件状态表（V0 已存在组件）
 
