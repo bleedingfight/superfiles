@@ -33,8 +33,9 @@
 
 - [ ] SMB2/3 后端（NTLM，后续 Kerberos；中文文件名编码矩阵）。注意：`smb` 0.12 与 `russh` 0.65 的 `curve25519-dalek` 版本冲突，需先解依赖
 - [ ] SFTP 后端（`russh` + `russh-sftp`，同上依赖冲突）
-- [x] WebDAV 后端（vfs-core 层，Nextcloud/群晖 SabreDAV 风格：PROPFIND/Range GET/PUT，`PATCH X-Update-Range`↔`PUT Content-Range` 自动协商，mock-server 单测）
-- [ ] WebDAV 接入 FFI 连接管理；真机兼容矩阵（Nextcloud / 群晖 / 威联通 / 中文文件名）
+- [x] WebDAV 后端（vfs-core 层：PROPFIND/Range GET/PUT，`PATCH X-Update-Range`↔`PUT Content-Range` 自动协商，mock-server 单测 + 真机矩阵种子 `tests/webdav_live.rs`）
+- [x] 真机矩阵首轮：Apache mod_dav 全pass（协商到 Content-Range PUT）；Nextcloud 27 浏览/整文件CRUD pass，但**禁用两种部分写方言**（PATCH 走自家 chunking v2 → 500；Content-Range PUT 显式 400）→ 如实报 Unsupported，大文件分块上传需引擎侧临时文件策略（见下条）
+- [ ] WebDAV 接入 FFI 连接管理；引擎对 `can_random_write=false` 目标实现临时文件+整体 PUT 策略（Nextcloud 必需的 fallback）；群晖/威联通真机轮测
 - [ ] 设备发现：mDNS + WS-Discovery
 - [ ] iOS File Provider 扩展（Replicated，iOS 16+）
 - [ ] Android `DocumentsProvider`

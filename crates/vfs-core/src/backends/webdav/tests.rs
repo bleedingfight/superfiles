@@ -32,6 +32,8 @@ struct State {
     fs: Mutex<Fs>,
     reject_patch: bool,
     reject_content_range: bool,
+    /// Nextcloud-style: PATCH explodes with a rendered DAV exception body.
+    patch_dav_error: bool,
     auth: Option<(String, String)>,
     flaky_hits: AtomicUsize,
 }
@@ -50,6 +52,7 @@ impl State {
             fs: Mutex::new(fs),
             reject_patch: false,
             reject_content_range: false,
+            patch_dav_error: false,
             auth: None,
             flaky_hits: AtomicUsize::new(0),
         }
@@ -240,6 +243,19 @@ fn handle(state: &State, request: &mut Request) -> Response<Cursor<Vec<u8>>> {
             }
         }
         "PATCH" => {
+            if state.patch_dav_error {
+                return close(
+                    Response::from_data(
+                        br#"<?xml version="1.0"?>
+<d:error xmlns:d="DAV:" xmlns:s="http://sabredav.org/ns">
+  <s:exception>ValueError</s:exception>
+  <s:message>hash_file(): Argument #1 must be a valid hashing algorithm</s:message>
+</d:error>"#
+                            .to_vec(),
+                    )
+                    .with_status_code(StatusCode(500)),
+                );
+            }
             if state.reject_patch {
                 return plain(405, "PATCH not allowed");
             }
@@ -546,6 +562,22 @@ async fn content_range_fallback_when_patch_rejected() {
     let b = backend(&base);
     let root = b.root_id();
     let file = format!("{root}docs/hello.txt");
+
+    b.write_range(&file, 6, b"webdav").await.unwrap();
+    assert_eq!(b.mode(), PartialMode::ContentRangePut);
+    assert_eq!(b.read_range(&file, 0, 16).await.unwrap(), b"hello webdav");
+}
+
+#[tokio::test]
+async fn dav_error_body_on_patch_is_a_dialect_signal() {
+    // Nextcloud answers PATCH with a rendered 500 DAV exception; that must be
+    // read as "dialect unavailable", not as a retryable network fault.
+    let (base, _state) = mock(State {
+        patch_dav_error: true,
+        ..State::new()
+    });
+    let b = backend(&base);
+    let file = format!("{}docs/hello.txt", b.root_id());
 
     b.write_range(&file, 6, b"webdav").await.unwrap();
     assert_eq!(b.mode(), PartialMode::ContentRangePut);

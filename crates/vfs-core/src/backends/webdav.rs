@@ -252,19 +252,23 @@ impl WebdavBackend {
     /// "this server does not know PATCH", not a caller-facing failure.
     async fn partial_patch(&self, url: &str, dav: &str, offset: u64, data: &[u8]) -> Result<()> {
         let end = offset + data.len() as u64 - 1;
+        // No server-error retries for probes: a rejected dialect must fail
+        // immediately, not after 3 round trips.
         let resp = self
-            .send(true, || {
+            .send(false, || {
                 self.request(method(b"PATCH"), url.to_string())
                     .header("X-Update-Range", format!("bytes={offset}-{end}"))
                     .header(header::CONTENT_TYPE, "application/octet-stream")
                     .body(data.to_vec())
             })
             .await?;
-        match resp.status().as_u16() {
+        let status = resp.status();
+        match status.as_u16() {
             200..=299 => Ok(()),
-            400 | 405 | 501 => Err(VfsError::Unsupported("PATCH not supported".into())),
             404 => self.create_with_gap(url, dav, offset, data).await,
-            other => Err(map_status(StatusCode::from_u16(other).unwrap(), dav)),
+            _ => Err(self
+                .classify_partial_failure(status, dav, resp, "PATCH not supported")
+                .await),
         }
     }
 
@@ -272,19 +276,46 @@ impl WebdavBackend {
     async fn partial_cr_put(&self, url: &str, dav: &str, offset: u64, data: &[u8]) -> Result<()> {
         let end = offset + data.len() as u64 - 1;
         let resp = self
-            .send(true, || {
+            .send(false, || {
                 self.request(Method::PUT, url.to_string())
                     .header("Content-Range", format!("bytes {offset}-{end}/*"))
                     .body(data.to_vec())
             })
             .await?;
-        match resp.status().as_u16() {
+        let status = resp.status();
+        match status.as_u16() {
             200..=299 => Ok(()),
-            400 | 405 | 501 => Err(VfsError::Unsupported(
-                "Content-Range PUT not supported".into(),
-            )),
             404 => self.create_with_gap(url, dav, offset, data).await,
-            other => Err(map_status(StatusCode::from_u16(other).unwrap(), dav)),
+            _ => Err(self
+                .classify_partial_failure(status, dav, resp, "Content-Range PUT not supported")
+                .await),
+        }
+    }
+
+    /// Distinguish "dialect not offered" from a real failure. Nextcloud, for
+    /// example, answers unknown partial-write verbs with a *rendered* DAV
+    /// exception body (400, sometimes 500) instead of 405/501: that is a
+    /// protocol-level rejection, not a transient fault, so probe-wise it maps
+    /// to `Unsupported` rather than `Network`.
+    async fn classify_partial_failure(
+        &self,
+        status: StatusCode,
+        dav: &str,
+        resp: Response,
+        unsupported_msg: &str,
+    ) -> VfsError {
+        match status.as_u16() {
+            400 | 405 | 501 => VfsError::Unsupported(unsupported_msg.to_string()),
+            s if s >= 500 => {
+                let body = resp.text().await.unwrap_or_default();
+                let is_dav_error = body.contains("<d:error") || body.contains("<s:exception");
+                if is_dav_error {
+                    VfsError::Unsupported(unsupported_msg.to_string())
+                } else {
+                    map_status(status, dav)
+                }
+            }
+            _ => map_status(status, dav),
         }
     }
 
