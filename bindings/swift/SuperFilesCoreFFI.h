@@ -323,6 +323,11 @@ RustBuffer uniffi_superfiles_fn_method_superfiles_join(uint64_t ptr, RustBuffer 
 RustBuffer uniffi_superfiles_fn_method_superfiles_list(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_MOUNT_SFTP
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_MOUNT_SFTP
+RustBuffer uniffi_superfiles_fn_method_superfiles_mount_sftp(uint64_t ptr, RustBuffer label, RustBuffer host, uint32_t port, RustBuffer username, RustBuffer password, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_MOUNT_SMB
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_MOUNT_SMB
 RustBuffer uniffi_superfiles_fn_method_superfiles_mount_smb(uint64_t ptr, RustBuffer label, RustBuffer host, RustBuffer share, RustBuffer username, RustBuffer password, RustCallStatus *_Nonnull out_status
@@ -748,6 +753,12 @@ uint16_t uniffi_superfiles_checksum_method_superfiles_join(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_LIST
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_LIST
 uint16_t uniffi_superfiles_checksum_method_superfiles_list(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_MOUNT_SFTP
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_MOUNT_SFTP
+uint16_t uniffi_superfiles_checksum_method_superfiles_mount_sftp(void
     
 );
 #endif

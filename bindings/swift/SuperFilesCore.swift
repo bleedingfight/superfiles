@@ -668,6 +668,11 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
     func list(id: String) throws  -> [Entry]
     
     /**
+     * Mount an SFTP host (password auth for now; key auth lands with the UI).
+     */
+    func mountSftp(label: String, host: String, port: UInt32, username: String, password: String) throws  -> String
+    
+    /**
      * Mount an SMB share (`\\host\share`); returns its root id.
      */
     func mountSmb(label: String, host: String, share: String, username: String, password: String) throws  -> String
@@ -975,6 +980,23 @@ open func list(id: String)throws  -> [Entry]  {
     uniffi_superfiles_fn_method_superfiles_list(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Mount an SFTP host (password auth for now; key auth lands with the UI).
+     */
+open func mountSftp(label: String, host: String, port: UInt32, username: String, password: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_mount_sftp(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(label),
+        FfiConverterString.lower(host),
+        FfiConverterUInt32.lower(port),
+        FfiConverterString.lower(username),
+        FfiConverterString.lower(password),uniffiCallStatus
     )
 })
 }
@@ -2307,6 +2329,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_list() != 33029) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_mount_sftp() != 42724) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_mount_smb() != 46850) {

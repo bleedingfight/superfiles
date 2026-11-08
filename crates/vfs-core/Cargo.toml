@@ -6,12 +6,13 @@ license.workspace = true
 rust-version.workspace = true
 description = "Portable virtual filesystem abstractions for Super Files"
 
-# NOTE: russh (sftp) rejoins later; on Apple targets it would fight smb's sspi
-# over curve25519-dalek (russh wants ^5, sspi pins =5.0.0-rc.1).
+# NOTE: see the russh comment in the workspace Cargo.toml for why sftp is
+# pinned to russh 0.55 (smb's sspi owns the RustCrypto RC ecosystem).
 [features]
-default = ["webdav", "smb"]
+default = ["webdav", "smb", "sftp"]
 webdav = ["dep:reqwest", "dep:quick-xml", "dep:percent-encoding"]
 smb = ["dep:smb", "dep:futures-util"]
+sftp = ["dep:russh", "dep:russh-sftp"]
 
 [dependencies]
 thiserror.workspace = true
@@ -22,6 +23,8 @@ quick-xml = { workspace = true, optional = true }
 percent-encoding = { workspace = true, optional = true }
 smb = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
+russh = { workspace = true, optional = true }
+russh-sftp = { workspace = true, optional = true }
 
 [dev-dependencies]
 tiny_http = "0.12"

@@ -31,8 +31,8 @@
 
 ## M2 — 网络存储
 
-- [x] SMB2/3 后端（NTLMv2、原生随机读写/truncate/rename、`set_info` 语义删除、futures 流式列目录、断连重挂；真机矩阵 `tests/smb_live.rs`：Samba 4.12 全 pass）。注意：与 `russh` 的 dalek 冲突仅在 Apple 平台存在，SFTP 接入时需解
-- [ ] SFTP 后端（`russh` + `russh-sftp`，同上依赖冲突）
+- [x] SMB2/3 后端（NTLMv2、原生随机读写/truncate/rename、`set_info` 语义删除、futures 流式列目录、断连重挂；真机矩阵 `tests/smb_live.rs`：Samba 4.12 全 pass）。注意：与 `russh` 的 dalek/RC 依赖冲突已在 SFTP 接入时通过钉版解决（见下）
+- [x] SFTP 后端（`russh` + `russh-sftp`，密码/私钥认证、原生随机读写/truncate/rename、session 断开惰性重连；真机矩阵 `tests/sftp_live.rs`：OpenSSH(linuxserver) 全 pass）。依赖冲突已解：russh 钉 0.55（其 crypto 家族与 sspi 的 RC 钉版完全不重叠，锁文件并存两份；分析见根 `Cargo.toml` 注释），SFTP 与 WebDAV/SMB 可同 feature 共存并默认启用
 - [x] WebDAV 后端（vfs-core 层：PROPFIND/Range GET/PUT，`PATCH X-Update-Range`↔`PUT Content-Range` 自动协商，mock-server 单测 + 真机矩阵种子 `tests/webdav_live.rs`）
 - [x] 真机矩阵首轮：Apache mod_dav 全pass（协商到 Content-Range PUT）；Nextcloud 27 浏览/整文件CRUD pass，但**禁用两种部分写方言**（PATCH 走自家 chunking v2 → 500；Content-Range PUT 显式 400）→ 如实报 Unsupported，大文件分块上传需引擎侧临时文件策略（见下条）
 - [ ] WebDAV 接入 FFI 连接管理；引擎对 `can_random_write=false` 目标实现临时文件+整体 PUT 策略（Nextcloud 必需的 fallback）；群晖/威联通真机轮测

@@ -89,7 +89,8 @@ open apps/ios/SuperFilesApp.xcodeproj
 - [x] 回环 HTTP+Range 流媒体服务（`StreamServer::url_for(id)` 拿到可播 URL；token 保护、206/416 语义、并发 seek）
 - [x] FFI 连接管理与流媒体出口：`mountWebdav/mountSmb/mounts/unmount/streamUrl`（同协议多实例按 root 前缀分流挂载）
 - [x] 断点续传（M1）：SQLite `transfers` 表 + per-file offset checkpoint（每 16 chunk 落盘）；`startCopy` 自动入日志，杀进程后 `pendingTransfers()/resumeTransfer(id)` 从断点继续
-- [ ] SFTP / 云盘后端（M2/M3）
+- [x] SFTP 后端（vfs-core 层：russh 0.55 + russh-sftp，密码/私钥认证、原生随机读写 + SETSTAT.fsize、断线惰性重连 + 受限重试；id↔路径越狱单测 + OpenSSH 真机矩阵 `tests/sftp_live.rs`）
+- [ ] 云盘后端（M2/M3）
 - [ ] iOS File Provider 扩展、Android DocumentsProvider（M2）
 - [ ] 媒体库、播放、投屏（M4）
 - [ ] Android TV 焦点优化、iPad 多窗口（M5）

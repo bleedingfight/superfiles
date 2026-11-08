@@ -701,6 +701,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_list(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_mount_sftp(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_mount_smb(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_mount_webdav(
@@ -790,6 +792,8 @@ internal object UniffiLib {
     external fun uniffi_superfiles_fn_method_superfiles_join(`ptr`: Long,`parent`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_list(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_mount_sftp(`ptr`: Long,`label`: RustBuffer.ByValue,`host`: RustBuffer.ByValue,`port`: Int,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_mount_smb(`ptr`: Long,`label`: RustBuffer.ByValue,`host`: RustBuffer.ByValue,`share`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -983,6 +987,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_list() and 0xFFFF) != 33029) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_mount_sftp() and 0xFFFF) != 42724) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_mount_smb() and 0xFFFF) != 46850) {
@@ -1537,6 +1544,11 @@ public interface SuperFilesInterface {
     fun `list`(`id`: kotlin.String): List<Entry>
     
     /**
+     * Mount an SFTP host (password auth for now; key auth lands with the UI).
+     */
+    fun `mountSftp`(`label`: kotlin.String, `host`: kotlin.String, `port`: kotlin.UInt, `username`: kotlin.String, `password`: kotlin.String): kotlin.String
+    
+    /**
      * Mount an SMB share (`\\host\share`); returns its root id.
      */
     fun `mountSmb`(`label`: kotlin.String, `host`: kotlin.String, `share`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String
@@ -1936,6 +1948,28 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
         it,
         
         FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Mount an SFTP host (password auth for now; key auth lands with the UI).
+     */
+    @Throws(SfException::class)override fun `mountSftp`(`label`: kotlin.String, `host`: kotlin.String, `port`: kotlin.UInt, `username`: kotlin.String, `password`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_mount_sftp(
+        it,
+        
+        FfiConverterString.lower(`label`),
+        FfiConverterString.lower(`host`),
+        FfiConverterUInt.lower(`port`),
+        FfiConverterString.lower(`username`),
+        FfiConverterString.lower(`password`),_status)
 }
     }
     )

@@ -439,6 +439,33 @@ impl SuperFiles {
         Ok(root)
     }
 
+    /// Mount an SFTP host (password auth for now; key auth lands with the UI).
+    pub fn mount_sftp(
+        &self,
+        label: String,
+        host: String,
+        port: u32,
+        username: String,
+        password: String,
+    ) -> Result<String, SfError> {
+        let port = u16::try_from(port).map_err(|_| SfError::InvalidName {
+            detail: format!("port out of range: {port}"),
+        })?;
+        let auth = vfs_core::backends::SftpAuth::password(username, password);
+        let backend = self.block_on(vfs_core::backends::SftpBackend::connect(&host, port, auth))?;
+        let root = backend.root_id();
+        self.vfs.mount_at(&root, Arc::new(backend));
+        self.mounts.lock().unwrap().insert(
+            root.clone(),
+            MountInfo {
+                scheme: "sftp".into(),
+                label,
+                root_id: root.clone(),
+            },
+        );
+        Ok(root)
+    }
+
     /// Every mounted connection (local root excluded).
     pub fn mounts(&self) -> Vec<MountInfo> {
         self.mounts.lock().unwrap().values().cloned().collect()
