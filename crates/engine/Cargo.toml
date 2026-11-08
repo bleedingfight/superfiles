@@ -8,5 +8,6 @@ description = "Transfer engine for Super Files"
 
 [dependencies]
 vfs-core.workspace = true
+sfiles-index.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

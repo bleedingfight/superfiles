@@ -13,3 +13,6 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # the rationale): pure Rust, zero runtime deps, compile-time tables. Only
 # the "plain" (tone-less) form is needed for search.
 pinyin = { version = "0.11", default-features = false, features = ["plain"] }
+# JSON for the embedded transfer documents (sources list, offset map).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

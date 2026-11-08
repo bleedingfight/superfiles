@@ -18,8 +18,8 @@
 
 ## M1 — 可用（下一步）
 
-- [ ] 传输任务持久化（SQLite `transfers` 表），杀进程可恢复
-- [ ] 断点续传：记录 per-file offset，重启后继续
+- [x] 传输任务持久化（SQLite `transfers` 表），杀进程可恢复
+- [x] 断点续传：记录 per-file offset，重启后继续
 - [ ] 列表结果写索引；离线浏览（断网展示缓存 + 过期标记）
 - [ ] 批量选择、重命名、移动（跨后端走复制+删除）
 - [ ] 冲突对话框（覆盖/跳过/重命名/全部应用）
@@ -40,6 +40,7 @@
 - [ ] iOS File Provider 扩展（Replicated，iOS 16+）
 - [ ] Android `DocumentsProvider`
 - [x] 本地回环 HTTP 服务（Range）供 AVPlayer/ExoPlayer 播远程视频（`crates/stream`：token 保护 URL、206/416、HEAD、并发连接；FFI 暴露随 WebDAV 连接管理一起做）
+- [x] FFI 连接管理接口：`mountWebdav` / `mountSmb` / `mounts` / `unmount` / `streamUrl`（多 NAS 按 root 前缀分流）
 - [ ] 连接管理 UI（凭据存 Keychain/Keystore）
 
 验收：手机能在系统「文件」App 里浏览 NAS；电视能直接播 NAS 视频。

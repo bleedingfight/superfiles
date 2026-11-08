@@ -21,6 +21,10 @@ use pinyin::ToPinyin;
 use rusqlite::{params, Connection};
 use vfs_core::{Entry, EntryKind, Result, VfsError};
 
+mod transfers;
+
+pub use transfers::{FileOffset, StoredTransfer, TransferTaskState};
+
 /// Source tag for entries indexed from the local file system. Remote
 /// backends (WebDAV/SMB, M2) write with their own source tag so one index
 /// can aggregate several mounts and still filter per mount.
@@ -97,6 +101,8 @@ impl Index {
             .map_err(db_err)?;
         }
         conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_entries_source ON entries(source)")
+            .map_err(db_err)?;
+        conn.execute_batch(transfers::TRANSFERS_SCHEMA)
             .map_err(db_err)?;
         // Rebuild the FTS table when it is out of sync with entries (e.g.
         // rows written by the LIKE-based version). Counts are reliable
@@ -224,6 +230,51 @@ impl Index {
     /// `source` (see [`upsert_all_for_source`](Self::upsert_all_for_source)).
     pub fn search_in_source(&self, source: &str, query: &str, limit: u32) -> Result<Vec<Entry>> {
         self.search_filtered(Some(source), query, limit)
+    }
+
+    // --- Transfer task persistence (see transfers.rs) ---
+
+    /// Insert or update a transfer record (see [`StoredTransfer`]).
+    pub fn save_transfer(&self, transfer: &StoredTransfer) -> Result<()> {
+        let conn = self.lock()?;
+        transfers::save_transfer(&conn, transfer)
+    }
+
+    /// Checkpoint write while a transfer runs: progress counters plus the
+    /// per-file offset map, cheap enough to call every few MiB copied.
+    pub fn update_transfer_progress(
+        &self,
+        id: &str,
+        files_done: u64,
+        bytes_done: u64,
+        file_offsets: &[FileOffset],
+    ) -> Result<()> {
+        let conn = self.lock()?;
+        transfers::update_transfer_progress(&conn, id, files_done, bytes_done, file_offsets)
+    }
+
+    /// Move a transfer into its terminal state (completed/failed/cancelled).
+    pub fn finish_transfer(
+        &self,
+        id: &str,
+        state: TransferTaskState,
+        error: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.lock()?;
+        transfers::finish_transfer(&conn, id, state, error)
+    }
+
+    /// Rows in `queued`/`running` state, oldest first — the set a restart
+    /// should offer to resume.
+    pub fn load_unfinished_transfers(&self) -> Result<Vec<StoredTransfer>> {
+        let conn = self.lock()?;
+        transfers::load_unfinished_transfers(&conn)
+    }
+
+    /// Drop the record entirely (user dismissed it from the UI).
+    pub fn forget_transfer(&self, id: &str) -> Result<()> {
+        let conn = self.lock()?;
+        transfers::forget_transfer(&conn, id)
     }
 
     fn search_filtered(&self, source: Option<&str>, query: &str, limit: u32) -> Result<Vec<Entry>> {

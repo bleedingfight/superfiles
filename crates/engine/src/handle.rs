@@ -120,6 +120,14 @@ impl TransferHandle {
         self.bytes_total.store(bytes, Ordering::SeqCst);
     }
 
+    /// Pre-loads progress recovered from a previous (crashed) run so the
+    /// resumed copy's progress bar continues where the last one stopped
+    /// instead of restarting at zero. Engine-internal (`transfer::run_resumable`).
+    pub(crate) fn seed_progress(&self, files_done: u64, bytes_done: u64) {
+        self.files_done.fetch_add(files_done, Ordering::SeqCst);
+        self.bytes_done.fetch_add(bytes_done, Ordering::SeqCst);
+    }
+
     pub fn set_current(&self, name: Option<String>) {
         *self.current.write().unwrap() = name;
     }
