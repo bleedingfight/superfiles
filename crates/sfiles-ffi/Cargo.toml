@@ -14,6 +14,7 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 vfs-core.workspace = true
 sfiles-engine.workspace = true
 sfiles-index.workspace = true
+sfiles-stream.workspace = true
 uniffi.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

@@ -701,11 +701,21 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_list(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_mount_smb(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_mount_webdav(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_mounts(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_pending_transfers(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_read_bytes(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_remove(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_rename(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_resume_transfer(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_root_id(
     ): Int
@@ -715,9 +725,13 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_stat(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_stream_url(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_transfer_snapshot(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_transfers(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_unmount(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_version(
     ): Int
@@ -777,12 +791,22 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_list(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_mount_smb(`ptr`: Long,`label`: RustBuffer.ByValue,`host`: RustBuffer.ByValue,`share`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_mount_webdav(`ptr`: Long,`label`: RustBuffer.ByValue,`baseUrl`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_mounts(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_pending_transfers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_read_bytes(`ptr`: Long,`id`: RustBuffer.ByValue,`offset`: Long,`len`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_remove(`ptr`: Long,`id`: RustBuffer.ByValue,`recursive`: Byte,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_rename(`ptr`: Long,`id`: RustBuffer.ByValue,`newName`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_resume_transfer(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_root_id(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_search(`ptr`: Long,`query`: RustBuffer.ByValue,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
@@ -791,10 +815,14 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_stat(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_stream_url(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_transfer_snapshot(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_transfers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_unmount(`ptr`: Long,`rootId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
     external fun uniffi_superfiles_fn_method_superfiles_version(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_write_bytes(`ptr`: Long,`id`: RustBuffer.ByValue,`offset`: Long,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -939,7 +967,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_export_to_fd() and 0xFFFF) != 242) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_superfiles_checksum_method_superfiles_forget_transfer() and 0xFFFF) != 52684) {
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_forget_transfer() and 0xFFFF) != 12967) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_import_from_fd() and 0xFFFF) != 15670) {
@@ -957,6 +985,18 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_list() and 0xFFFF) != 33029) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_mount_smb() and 0xFFFF) != 46850) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_mount_webdav() and 0xFFFF) != 36434) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_mounts() and 0xFFFF) != 32210) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_pending_transfers() and 0xFFFF) != 25004) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_read_bytes() and 0xFFFF) != 59465) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -966,22 +1006,31 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_rename() and 0xFFFF) != 38276) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_resume_transfer() and 0xFFFF) != 50539) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_root_id() and 0xFFFF) != 46979) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_search() and 0xFFFF) != 33314) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_superfiles_checksum_method_superfiles_start_copy() and 0xFFFF) != 49906) {
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_start_copy() and 0xFFFF) != 21211) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_stat() and 0xFFFF) != 17632) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_stream_url() and 0xFFFF) != 9171) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_transfer_snapshot() and 0xFFFF) != 47685) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_transfers() and 0xFFFF) != 7778) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_unmount() and 0xFFFF) != 63226) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_version() and 0xFFFF) != 44088) {
@@ -1464,7 +1513,9 @@ public interface SuperFilesInterface {
     fun `exportToFd`(`id`: kotlin.String, `fd`: kotlin.Int, `offset`: kotlin.ULong): kotlin.ULong
     
     /**
-     * Drop a finished transfer from the registry (UI dismissed it).
+     * Drop a finished transfer from the registry (UI dismissed it). Also
+     * deletes its persisted resume record, if any — this is how a pending
+     * transfer the user declined to resume goes away.
      */
     fun `forgetTransfer`(`id`: kotlin.String)
     
@@ -1486,6 +1537,30 @@ public interface SuperFilesInterface {
     fun `list`(`id`: kotlin.String): List<Entry>
     
     /**
+     * Mount an SMB share (`\\host\share`); returns its root id.
+     */
+    fun `mountSmb`(`label`: kotlin.String, `host`: kotlin.String, `share`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String
+    
+    /**
+     * Mount a WebDAV collection; returns its root id (`webdav://host/`).
+     * Empty user+password means anonymous access.
+     */
+    fun `mountWebdav`(`label`: kotlin.String, `baseUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String
+    
+    /**
+     * Every mounted connection (local root excluded).
+     */
+    fun `mounts`(): List<MountInfo>
+    
+    /**
+     * Transfers a previous run didn't finish (crash / killed app), restored
+     * from the index. Ids already tracked by this process are excluded —
+     * those are live and show up in `transfers()` instead. Errors when no
+     * index was configured.
+     */
+    fun `pendingTransfers`(): List<PendingTransfer>
+    
+    /**
      * Random access read for previews. Keep `len` small (a few hundred KiB).
      */
     fun `readBytes`(`id`: kotlin.String, `offset`: kotlin.ULong, `len`: kotlin.UInt): kotlin.ByteArray
@@ -1493,6 +1568,20 @@ public interface SuperFilesInterface {
     fun `remove`(`id`: kotlin.String, `recursive`: kotlin.Boolean)
     
     fun `rename`(`id`: kotlin.String, `newName`: kotlin.String): Entry
+    
+    /**
+     * Continue a transfer persisted by a previous run (see
+     * `pendingTransfers`). Sources and destination come from the stored
+     * record; the id is kept, so polling/cancelling work exactly like with
+     * a fresh `startCopy`.
+     *
+     * Resuming always uses the `Overwrite` conflict policy — for the file
+     * being copied mid-way that is precisely "continue at the recorded
+     * offset". The original policy isn't persisted, so anything else would
+     * be a guess; callers wanting a fresh copy should `forgetTransfer` and
+     * `startCopy` instead.
+     */
+    fun `resumeTransfer`(`id`: kotlin.String)
     
     /**
      * Id of the default local root (what the browser opens first).
@@ -1506,14 +1595,30 @@ public interface SuperFilesInterface {
     
     /**
      * Start a background copy. Returns a transfer id for polling/cancelling.
+     *
+     * When the core was opened with an index, the copy is journaled: a
+     * process kill mid-way leaves a `pendingTransfers()` entry that
+     * `resumeTransfer(id)` can continue instead of starting over.
      */
     fun `startCopy`(`sources`: List<kotlin.String>, `destDir`: kotlin.String, `conflict`: ConflictPolicy): kotlin.String
     
     fun `stat`(`id`: kotlin.String): Entry
     
+    /**
+     * Loopback HTTP(+Range) URL for any backend file with `can_seek`.
+     * Hand it to AVPlayer / ExoPlayer directly. The server starts lazily and
+     * dies with the core.
+     */
+    fun `streamUrl`(`id`: kotlin.String): kotlin.String
+    
     fun `transferSnapshot`(`id`: kotlin.String): TransferSnapshot?
     
     fun `transfers`(): List<TransferSnapshot>
+    
+    /**
+     * Drop a mounted connection. Returns false when `root_id` wasn't mounted.
+     */
+    fun `unmount`(`rootId`: kotlin.String): kotlin.Boolean
     
     fun `version`(): kotlin.String
     
@@ -1739,7 +1844,9 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
 
     
     /**
-     * Drop a finished transfer from the registry (UI dismissed it).
+     * Drop a finished transfer from the registry (UI dismissed it). Also
+     * deletes its persisted resume record, if any — this is how a pending
+     * transfer the user declined to resume goes away.
      */override fun `forgetTransfer`(`id`: kotlin.String)
         = 
     callWithHandle {
@@ -1837,6 +1944,86 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
 
     
     /**
+     * Mount an SMB share (`\\host\share`); returns its root id.
+     */
+    @Throws(SfException::class)override fun `mountSmb`(`label`: kotlin.String, `host`: kotlin.String, `share`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_mount_smb(
+        it,
+        
+        FfiConverterString.lower(`label`),
+        FfiConverterString.lower(`host`),
+        FfiConverterString.lower(`share`),
+        FfiConverterString.lower(`username`),
+        FfiConverterString.lower(`password`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Mount a WebDAV collection; returns its root id (`webdav://host/`).
+     * Empty user+password means anonymous access.
+     */
+    @Throws(SfException::class)override fun `mountWebdav`(`label`: kotlin.String, `baseUrl`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_mount_webdav(
+        it,
+        
+        FfiConverterString.lower(`label`),
+        FfiConverterString.lower(`baseUrl`),
+        FfiConverterString.lower(`username`),
+        FfiConverterString.lower(`password`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Every mounted connection (local root excluded).
+     */override fun `mounts`(): List<MountInfo> {
+            return FfiConverterSequenceTypeMountInfo.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_mounts(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Transfers a previous run didn't finish (crash / killed app), restored
+     * from the index. Ids already tracked by this process are excluded —
+     * those are live and show up in `transfers()` instead. Errors when no
+     * index was configured.
+     */
+    @Throws(SfException::class)override fun `pendingTransfers`(): List<PendingTransfer> {
+            return FfiConverterSequenceTypePendingTransfer.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_pending_transfers(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Random access read for previews. Keep `len` small (a few hundred KiB).
      */
     @Throws(SfException::class)override fun `readBytes`(`id`: kotlin.String, `offset`: kotlin.ULong, `len`: kotlin.UInt): kotlin.ByteArray {
@@ -1888,6 +2075,32 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
 
     
     /**
+     * Continue a transfer persisted by a previous run (see
+     * `pendingTransfers`). Sources and destination come from the stored
+     * record; the id is kept, so polling/cancelling work exactly like with
+     * a fresh `startCopy`.
+     *
+     * Resuming always uses the `Overwrite` conflict policy — for the file
+     * being copied mid-way that is precisely "continue at the recorded
+     * offset". The original policy isn't persisted, so anything else would
+     * be a guess; callers wanting a fresh copy should `forgetTransfer` and
+     * `startCopy` instead.
+     */
+    @Throws(SfException::class)override fun `resumeTransfer`(`id`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_resume_transfer(
+        it,
+        
+        FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * Id of the default local root (what the browser opens first).
      */override fun `rootId`(): kotlin.String {
             return FfiConverterString.lift(
@@ -1924,6 +2137,10 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
     
     /**
      * Start a background copy. Returns a transfer id for polling/cancelling.
+     *
+     * When the core was opened with an index, the copy is journaled: a
+     * process kill mid-way leaves a `pendingTransfers()` entry that
+     * `resumeTransfer(id)` can continue instead of starting over.
      */
     @Throws(SfException::class)override fun `startCopy`(`sources`: List<kotlin.String>, `destDir`: kotlin.String, `conflict`: ConflictPolicy): kotlin.String {
             return FfiConverterString.lift(
@@ -1956,6 +2173,26 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
     }
     
 
+    
+    /**
+     * Loopback HTTP(+Range) URL for any backend file with `can_seek`.
+     * Hand it to AVPlayer / ExoPlayer directly. The server starts lazily and
+     * dies with the core.
+     */
+    @Throws(SfException::class)override fun `streamUrl`(`id`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_stream_url(
+        it,
+        
+        FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
     override fun `transferSnapshot`(`id`: kotlin.String): TransferSnapshot? {
             return FfiConverterOptionalTypeTransferSnapshot.lift(
     callWithHandle {
@@ -1977,6 +2214,23 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
     UniffiLib.uniffi_superfiles_fn_method_superfiles_transfers(
         it,
         _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Drop a mounted connection. Returns false when `root_id` wasn't mounted.
+     */override fun `unmount`(`rootId`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_unmount(
+        it,
+        
+        FfiConverterString.lower(`rootId`),_status)
 }
     }
     )
@@ -2222,6 +2476,120 @@ public object FfiConverterTypeEntry: FfiConverterRustBuffer<Entry> {
             FfiConverterOptionalString.write(value.`mime`, buf)
             FfiConverterBoolean.write(value.`hidden`, buf)
             FfiConverterBoolean.write(value.`readonly`, buf)
+    }
+}
+
+
+
+/**
+ * One mounted remote connection, as listed by the connection UI.
+ */
+data class MountInfo (
+    var `scheme`: kotlin.String
+    , 
+    var `label`: kotlin.String
+    , 
+    var `rootId`: kotlin.String
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMountInfo: FfiConverterRustBuffer<MountInfo> {
+    override fun read(buf: ByteBuffer): MountInfo {
+        return MountInfo(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: MountInfo) = (
+            FfiConverterString.allocationSize(value.`scheme`) +
+            FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterString.allocationSize(value.`rootId`)
+    )
+
+    override fun write(value: MountInfo, buf: ByteBuffer) {
+            FfiConverterString.write(value.`scheme`, buf)
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterString.write(value.`rootId`, buf)
+    }
+}
+
+
+
+/**
+ * A transfer a previous run didn't finish (crash / killed app), restored
+ * from the index on the next launch. Feed `id` to `resumeTransfer` to
+ * continue it, or `forgetTransfer` to drop it.
+ */
+data class PendingTransfer (
+    var `id`: kotlin.String
+    , 
+    var `sources`: List<kotlin.String>
+    , 
+    var `destDir`: kotlin.String
+    , 
+    var `filesTotal`: kotlin.ULong
+    , 
+    var `filesDone`: kotlin.ULong
+    , 
+    var `bytesTotal`: kotlin.ULong
+    , 
+    var `bytesDone`: kotlin.ULong
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePendingTransfer: FfiConverterRustBuffer<PendingTransfer> {
+    override fun read(buf: ByteBuffer): PendingTransfer {
+        return PendingTransfer(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: PendingTransfer) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterSequenceString.allocationSize(value.`sources`) +
+            FfiConverterString.allocationSize(value.`destDir`) +
+            FfiConverterULong.allocationSize(value.`filesTotal`) +
+            FfiConverterULong.allocationSize(value.`filesDone`) +
+            FfiConverterULong.allocationSize(value.`bytesTotal`) +
+            FfiConverterULong.allocationSize(value.`bytesDone`)
+    )
+
+    override fun write(value: PendingTransfer, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterSequenceString.write(value.`sources`, buf)
+            FfiConverterString.write(value.`destDir`, buf)
+            FfiConverterULong.write(value.`filesTotal`, buf)
+            FfiConverterULong.write(value.`filesDone`, buf)
+            FfiConverterULong.write(value.`bytesTotal`, buf)
+            FfiConverterULong.write(value.`bytesDone`, buf)
     }
 }
 
@@ -2773,6 +3141,62 @@ public object FfiConverterSequenceTypeEntry: FfiConverterRustBuffer<List<Entry>>
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeEntry.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMountInfo: FfiConverterRustBuffer<List<MountInfo>> {
+    override fun read(buf: ByteBuffer): List<MountInfo> {
+        val len = buf.getInt()
+        return List<MountInfo>(len) {
+            FfiConverterTypeMountInfo.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MountInfo>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMountInfo.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<MountInfo>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMountInfo.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypePendingTransfer: FfiConverterRustBuffer<List<PendingTransfer>> {
+    override fun read(buf: ByteBuffer): List<PendingTransfer> {
+        val len = buf.getInt()
+        return List<PendingTransfer>(len) {
+            FfiConverterTypePendingTransfer.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<PendingTransfer>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypePendingTransfer.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<PendingTransfer>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypePendingTransfer.write(it, buf)
         }
     }
 }

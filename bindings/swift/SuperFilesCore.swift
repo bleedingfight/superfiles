@@ -644,7 +644,9 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
     func exportToFd(id: String, fd: Int32, offset: UInt64) throws  -> UInt64
     
     /**
-     * Drop a finished transfer from the registry (UI dismissed it).
+     * Drop a finished transfer from the registry (UI dismissed it). Also
+     * deletes its persisted resume record, if any — this is how a pending
+     * transfer the user declined to resume goes away.
      */
     func forgetTransfer(id: String) 
     
@@ -666,6 +668,30 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
     func list(id: String) throws  -> [Entry]
     
     /**
+     * Mount an SMB share (`\\host\share`); returns its root id.
+     */
+    func mountSmb(label: String, host: String, share: String, username: String, password: String) throws  -> String
+    
+    /**
+     * Mount a WebDAV collection; returns its root id (`webdav://host/`).
+     * Empty user+password means anonymous access.
+     */
+    func mountWebdav(label: String, baseUrl: String, username: String, password: String) throws  -> String
+    
+    /**
+     * Every mounted connection (local root excluded).
+     */
+    func mounts()  -> [MountInfo]
+    
+    /**
+     * Transfers a previous run didn't finish (crash / killed app), restored
+     * from the index. Ids already tracked by this process are excluded —
+     * those are live and show up in `transfers()` instead. Errors when no
+     * index was configured.
+     */
+    func pendingTransfers() throws  -> [PendingTransfer]
+    
+    /**
      * Random access read for previews. Keep `len` small (a few hundred KiB).
      */
     func readBytes(id: String, offset: UInt64, len: UInt32) throws  -> Data
@@ -673,6 +699,20 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
     func remove(id: String, recursive: Bool) throws 
     
     func rename(id: String, newName: String) throws  -> Entry
+    
+    /**
+     * Continue a transfer persisted by a previous run (see
+     * `pendingTransfers`). Sources and destination come from the stored
+     * record; the id is kept, so polling/cancelling work exactly like with
+     * a fresh `startCopy`.
+     *
+     * Resuming always uses the `Overwrite` conflict policy — for the file
+     * being copied mid-way that is precisely "continue at the recorded
+     * offset". The original policy isn't persisted, so anything else would
+     * be a guess; callers wanting a fresh copy should `forgetTransfer` and
+     * `startCopy` instead.
+     */
+    func resumeTransfer(id: String) throws 
     
     /**
      * Id of the default local root (what the browser opens first).
@@ -686,14 +726,30 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
     
     /**
      * Start a background copy. Returns a transfer id for polling/cancelling.
+     *
+     * When the core was opened with an index, the copy is journaled: a
+     * process kill mid-way leaves a `pendingTransfers()` entry that
+     * `resumeTransfer(id)` can continue instead of starting over.
      */
     func startCopy(sources: [String], destDir: String, conflict: ConflictPolicy) throws  -> String
     
     func stat(id: String) throws  -> Entry
     
+    /**
+     * Loopback HTTP(+Range) URL for any backend file with `can_seek`.
+     * Hand it to AVPlayer / ExoPlayer directly. The server starts lazily and
+     * dies with the core.
+     */
+    func streamUrl(id: String) throws  -> String
+    
     func transferSnapshot(id: String)  -> TransferSnapshot?
     
     func transfers()  -> [TransferSnapshot]
+    
+    /**
+     * Drop a mounted connection. Returns false when `root_id` wasn't mounted.
+     */
+    func unmount(rootId: String)  -> Bool
     
     func version()  -> String
     
@@ -851,7 +907,9 @@ open func exportToFd(id: String, fd: Int32, offset: UInt64)throws  -> UInt64  {
 }
     
     /**
-     * Drop a finished transfer from the registry (UI dismissed it).
+     * Drop a finished transfer from the registry (UI dismissed it). Also
+     * deletes its persisted resume record, if any — this is how a pending
+     * transfer the user declined to resume goes away.
      */
 open func forgetTransfer(id: String)  {try! rustCall() {
         uniffiCallStatus in
@@ -922,6 +980,67 @@ open func list(id: String)throws  -> [Entry]  {
 }
     
     /**
+     * Mount an SMB share (`\\host\share`); returns its root id.
+     */
+open func mountSmb(label: String, host: String, share: String, username: String, password: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_mount_smb(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(label),
+        FfiConverterString.lower(host),
+        FfiConverterString.lower(share),
+        FfiConverterString.lower(username),
+        FfiConverterString.lower(password),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Mount a WebDAV collection; returns its root id (`webdav://host/`).
+     * Empty user+password means anonymous access.
+     */
+open func mountWebdav(label: String, baseUrl: String, username: String, password: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_mount_webdav(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(label),
+        FfiConverterString.lower(baseUrl),
+        FfiConverterString.lower(username),
+        FfiConverterString.lower(password),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Every mounted connection (local root excluded).
+     */
+open func mounts() -> [MountInfo]  {
+    return try!  FfiConverterSequenceTypeMountInfo.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_mounts(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Transfers a previous run didn't finish (crash / killed app), restored
+     * from the index. Ids already tracked by this process are excluded —
+     * those are live and show up in `transfers()` instead. Errors when no
+     * index was configured.
+     */
+open func pendingTransfers()throws  -> [PendingTransfer]  {
+    return try  FfiConverterSequenceTypePendingTransfer.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_pending_transfers(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Random access read for previews. Keep `len` small (a few hundred KiB).
      */
 open func readBytes(id: String, offset: UInt64, len: UInt32)throws  -> Data  {
@@ -958,6 +1077,27 @@ open func rename(id: String, newName: String)throws  -> Entry  {
 }
     
     /**
+     * Continue a transfer persisted by a previous run (see
+     * `pendingTransfers`). Sources and destination come from the stored
+     * record; the id is kept, so polling/cancelling work exactly like with
+     * a fresh `startCopy`.
+     *
+     * Resuming always uses the `Overwrite` conflict policy — for the file
+     * being copied mid-way that is precisely "continue at the recorded
+     * offset". The original policy isn't persisted, so anything else would
+     * be a guess; callers wanting a fresh copy should `forgetTransfer` and
+     * `startCopy` instead.
+     */
+open func resumeTransfer(id: String)throws   {try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_resume_transfer(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * Id of the default local root (what the browser opens first).
      */
 open func rootId() -> String  {
@@ -985,6 +1125,10 @@ open func search(query: String, limit: UInt32)throws  -> [Entry]  {
     
     /**
      * Start a background copy. Returns a transfer id for polling/cancelling.
+     *
+     * When the core was opened with an index, the copy is journaled: a
+     * process kill mid-way leaves a `pendingTransfers()` entry that
+     * `resumeTransfer(id)` can continue instead of starting over.
      */
 open func startCopy(sources: [String], destDir: String, conflict: ConflictPolicy)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
@@ -1008,6 +1152,21 @@ open func stat(id: String)throws  -> Entry  {
 })
 }
     
+    /**
+     * Loopback HTTP(+Range) URL for any backend file with `can_seek`.
+     * Hand it to AVPlayer / ExoPlayer directly. The server starts lazily and
+     * dies with the core.
+     */
+open func streamUrl(id: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_stream_url(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
 open func transferSnapshot(id: String) -> TransferSnapshot?  {
     return try!  FfiConverterOptionTypeTransferSnapshot.lift(try! rustCall() {
         uniffiCallStatus in
@@ -1023,6 +1182,19 @@ open func transfers() -> [TransferSnapshot]  {
         uniffiCallStatus in
     uniffi_superfiles_fn_method_superfiles_transfers(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Drop a mounted connection. Returns false when `root_id` wasn't mounted.
+     */
+open func unmount(rootId: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_unmount(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(rootId),uniffiCallStatus
     )
 })
 }
@@ -1266,6 +1438,146 @@ public func FfiConverterTypeEntry_lift(_ buf: RustBuffer) throws -> Entry {
 #endif
 public func FfiConverterTypeEntry_lower(_ value: Entry) -> RustBuffer {
     return FfiConverterTypeEntry.lower(value)
+}
+
+
+/**
+ * One mounted remote connection, as listed by the connection UI.
+ */
+public struct MountInfo: Equatable, Hashable {
+    public var scheme: String
+    public var label: String
+    public var rootId: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(scheme: String, label: String, rootId: String) {
+        self.scheme = scheme
+        self.label = label
+        self.rootId = rootId
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MountInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMountInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MountInfo {
+        return
+            try MountInfo(
+                scheme: FfiConverterString.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                rootId: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MountInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.scheme, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterString.write(value.rootId, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMountInfo_lift(_ buf: RustBuffer) throws -> MountInfo {
+    return try FfiConverterTypeMountInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMountInfo_lower(_ value: MountInfo) -> RustBuffer {
+    return FfiConverterTypeMountInfo.lower(value)
+}
+
+
+/**
+ * A transfer a previous run didn't finish (crash / killed app), restored
+ * from the index on the next launch. Feed `id` to `resumeTransfer` to
+ * continue it, or `forgetTransfer` to drop it.
+ */
+public struct PendingTransfer: Equatable, Hashable {
+    public var id: String
+    public var sources: [String]
+    public var destDir: String
+    public var filesTotal: UInt64
+    public var filesDone: UInt64
+    public var bytesTotal: UInt64
+    public var bytesDone: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, sources: [String], destDir: String, filesTotal: UInt64, filesDone: UInt64, bytesTotal: UInt64, bytesDone: UInt64) {
+        self.id = id
+        self.sources = sources
+        self.destDir = destDir
+        self.filesTotal = filesTotal
+        self.filesDone = filesDone
+        self.bytesTotal = bytesTotal
+        self.bytesDone = bytesDone
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PendingTransfer: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePendingTransfer: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PendingTransfer {
+        return
+            try PendingTransfer(
+                id: FfiConverterString.read(from: &buf), 
+                sources: FfiConverterSequenceString.read(from: &buf), 
+                destDir: FfiConverterString.read(from: &buf), 
+                filesTotal: FfiConverterUInt64.read(from: &buf), 
+                filesDone: FfiConverterUInt64.read(from: &buf), 
+                bytesTotal: FfiConverterUInt64.read(from: &buf), 
+                bytesDone: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PendingTransfer, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterSequenceString.write(value.sources, into: &buf)
+        FfiConverterString.write(value.destDir, into: &buf)
+        FfiConverterUInt64.write(value.filesTotal, into: &buf)
+        FfiConverterUInt64.write(value.filesDone, into: &buf)
+        FfiConverterUInt64.write(value.bytesTotal, into: &buf)
+        FfiConverterUInt64.write(value.bytesDone, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePendingTransfer_lift(_ buf: RustBuffer) throws -> PendingTransfer {
+    return try FfiConverterTypePendingTransfer.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePendingTransfer_lower(_ value: PendingTransfer) -> RustBuffer {
+    return FfiConverterTypePendingTransfer.lower(value)
 }
 
 
@@ -1871,6 +2183,56 @@ fileprivate struct FfiConverterSequenceTypeEntry: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeMountInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [MountInfo]
+
+    public static func write(_ value: [MountInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMountInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MountInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MountInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMountInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePendingTransfer: FfiConverterRustBuffer {
+    typealias SwiftType = [PendingTransfer]
+
+    public static func write(_ value: [PendingTransfer], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePendingTransfer.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PendingTransfer] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PendingTransfer]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePendingTransfer.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeTransferSnapshot: FfiConverterRustBuffer {
     typealias SwiftType = [TransferSnapshot]
 
@@ -1929,7 +2291,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_export_to_fd() != 242) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_superfiles_checksum_method_superfiles_forget_transfer() != 52684) {
+    if (uniffi_superfiles_checksum_method_superfiles_forget_transfer() != 12967) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_import_from_fd() != 15670) {
@@ -1947,6 +2309,18 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_list() != 33029) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_mount_smb() != 46850) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_mount_webdav() != 36434) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_mounts() != 32210) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_pending_transfers() != 25004) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_read_bytes() != 59465) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -1956,22 +2330,31 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_rename() != 38276) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_resume_transfer() != 50539) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_root_id() != 46979) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_search() != 33314) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_superfiles_checksum_method_superfiles_start_copy() != 49906) {
+    if (uniffi_superfiles_checksum_method_superfiles_start_copy() != 21211) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_stat() != 17632) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_stream_url() != 9171) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_transfer_snapshot() != 47685) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_transfers() != 7778) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_unmount() != 63226) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_version() != 44088) {

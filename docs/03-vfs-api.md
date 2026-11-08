@@ -104,7 +104,12 @@ UI 必须按能力渲染，禁止写「if backend == smb」这类分支。
 | `stat/list/createDir/createFile/remove/rename` | 浏览与元数据操作 |
 | `readBytes/writeBytes` | 小数据（预览） |
 | `exportToFd/importFromFd` | 大数据流式（平台 fd） |
+| `mountWebdav(label, baseUrl, user, pass)` | 挂载 WebDAV；返回 root id |
+| `mountSmb(label, host, share, user, pass)` | 挂载 SMB 共享；返回 root id |
+| `mounts()` / `unmount(rootId)` | 连接管理（同协议多实例按 root 前缀分流） |
+| `streamUrl(id)` | 回环 HTTP+Range 播放 URL（懒启动） |
 | `startCopy/transferSnapshot/transfers/cancelTransfer/forgetTransfer` | 传输任务 |
+| `pendingTransfers()/resumeTransfer(id)` | 断点续传：重启后恢复未完成的复制（`forgetTransfer` 放弃） |
 | `indexDir/search/indexCount/clearIndex` | 索引 |
 
 版本策略：新增方法向后兼容；**不要修改已有方法签名**（UniFFI 有 checksum 校验，签名变化必须两端同时更新并重新生成绑定）。

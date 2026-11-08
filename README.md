@@ -87,8 +87,9 @@ open apps/ios/SuperFilesApp.xcodeproj
 - [x] WebDAV 后端（vfs-core 层：PROPFIND / Range GET / PUT、PATCH 与 Content-Range 部分写协商、受限重试；mock-server 单测 + Apache/Nextcloud 真机矩阵）
 - [x] SMB 后端（vfs-core 层：**原生随机读写**/SET_END_OF_FILE、NT 状态码错误映射、受限重试 + 断连重挂；id↔UNC 单测 + Samba 真机矩阵）
 - [x] 回环 HTTP+Range 流媒体服务（`StreamServer::url_for(id)` 拿到可播 URL；token 保护、206/416 语义、并发 seek）
+- [x] FFI 连接管理与流媒体出口：`mountWebdav/mountSmb/mounts/unmount/streamUrl`（同协议多实例按 root 前缀分流挂载）
+- [x] 断点续传（M1）：SQLite `transfers` 表 + per-file offset checkpoint（每 16 chunk 落盘）；`startCopy` 自动入日志，杀进程后 `pendingTransfers()/resumeTransfer(id)` 从断点继续
 - [ ] SFTP / 云盘后端（M2/M3）
-- [ ] WebDAV 的 FFI 连接管理与真机兼容矩阵（M2）
 - [ ] iOS File Provider 扩展、Android DocumentsProvider（M2）
 - [ ] 媒体库、播放、投屏（M4）
 - [ ] Android TV 焦点优化、iPad 多窗口（M5）

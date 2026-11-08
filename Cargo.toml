@@ -27,7 +27,7 @@ thiserror = "2"
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "fs", "sync", "time", "macros"] }
 
-# Network backends (vfs-core feature gates: webdav / smb)
+# Network backends (vfs-core feature gates: webdav / smb / sftp)
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "charset"] }
 quick-xml = "0.42"
 percent-encoding = "2"
@@ -36,6 +36,24 @@ percent-encoding = "2"
 # (sftp) when both target Apple platforms.
 smb = "0.12"
 futures-util = "0.3"
+# russh is pinned to 0.55: its crypto stack (curve25519-dalek ^4,
+# elliptic-curve ^0.13, pkcs5 ^0.7, rsa ^0.9, signature ^2) is a *different
+# semver family* than the RustCrypto RC pins of smb's sspi
+# (=curve25519-dalek-5.0.0-rc.1, =p256-0.14.0-rc.14, =rsa-0.10.0-rc.18, ...),
+# so both resolve side by side in one lockfile. Every newer russh collides
+# with sspi on versions the single-lockfile resolver cannot duplicate:
+#   0.63-0.65  curve25519-dalek ^5            vs sspi =5.0.0-rc.1
+#   0.62.3-7   curve25519-dalek ^5            (same)
+#   0.62.0-2   p256 =0.14.0-rc.15             vs sspi =0.14.0-rc.14
+#   0.61.x     curve25519-dalek =5.0.0-rc.0   vs =5.0.0-rc.1
+#   0.60.2     aead =0.6.0-rc.10              vs smb aead ^0.6
+#   0.60.0-1   resolves, but its code needs pre-rename pkcs5 0.8.0-rc.13 while
+#              sspi's chain pulls pkcs5 ^0.8 finals (API rename between them)
+#   0.57-0.59  rand_core =0.10.0-rc-3         vs sspi rand_core ^0.10
+#   0.56       ssh-key 0.6.16 targets rsa ~0.10.0-rc.10 APIs; sspi pins
+#              rsa =0.10.0-rc.18 whose rand_core 0.10 traits break its build
+russh = "0.55"
+russh-sftp = "2.1.2"
 
 [profile.release]
 lto = "thin"

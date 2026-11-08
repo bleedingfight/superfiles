@@ -165,6 +165,42 @@ pub struct TransferSnapshot {
     pub error: Option<String>,
 }
 
+/// One mounted remote connection, as listed by the connection UI.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MountInfo {
+    pub scheme: String,
+    pub label: String,
+    pub root_id: String,
+}
+
+/// A transfer a previous run didn't finish (crash / killed app), restored
+/// from the index on the next launch. Feed `id` to `resumeTransfer` to
+/// continue it, or `forgetTransfer` to drop it.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PendingTransfer {
+    pub id: String,
+    pub sources: Vec<String>,
+    pub dest_dir: String,
+    pub files_total: u64,
+    pub files_done: u64,
+    pub bytes_total: u64,
+    pub bytes_done: u64,
+}
+
+impl From<sfiles_index::StoredTransfer> for PendingTransfer {
+    fn from(stored: sfiles_index::StoredTransfer) -> Self {
+        Self {
+            id: stored.id,
+            sources: stored.sources,
+            dest_dir: stored.dest_dir,
+            files_total: stored.files_total,
+            files_done: stored.files_done,
+            bytes_total: stored.bytes_total,
+            bytes_done: stored.bytes_done,
+        }
+    }
+}
+
 impl From<sfiles_engine::TransferSnapshot> for TransferSnapshot {
     fn from(snapshot: sfiles_engine::TransferSnapshot) -> Self {
         Self {
@@ -246,6 +282,8 @@ pub struct SuperFiles {
     index: Option<Arc<Index>>,
     transfers: Mutex<HashMap<String, Arc<TransferHandle>>>,
     counter: AtomicU64,
+    mounts: Mutex<HashMap<String, MountInfo>>,
+    streamer: Mutex<Option<Arc<sfiles_stream::StreamServer>>>,
 }
 
 #[uniffi::export]
@@ -268,6 +306,8 @@ impl SuperFiles {
             index,
             transfers: Mutex::new(HashMap::new()),
             counter: AtomicU64::new(1),
+            mounts: Mutex::new(HashMap::new()),
+            streamer: Mutex::new(None),
         }))
     }
 
@@ -340,9 +380,93 @@ impl SuperFiles {
         Vfs::join(&parent, &name)
     }
 
+    // ---------------------------------------------------------------- mounts
+
+    /// Mount a WebDAV collection; returns its root id (`webdav://host/`).
+    /// Empty user+password means anonymous access.
+    pub fn mount_webdav(
+        &self,
+        label: String,
+        base_url: String,
+        username: String,
+        password: String,
+    ) -> Result<String, SfError> {
+        let auth = if username.is_empty() && password.is_empty() {
+            vfs_core::backends::WebdavAuth::None
+        } else {
+            vfs_core::backends::WebdavAuth::Basic { username, password }
+        };
+        let backend = vfs_core::backends::WebdavBackend::new(&base_url, auth)?;
+        let root = backend.root_id();
+        self.vfs.mount_at(&root, Arc::new(backend));
+        self.mounts.lock().unwrap().insert(
+            root.clone(),
+            MountInfo {
+                scheme: "webdav".into(),
+                label,
+                root_id: root.clone(),
+            },
+        );
+        Ok(root)
+    }
+
+    /// Mount an SMB share (`\\host\share`); returns its root id.
+    pub fn mount_smb(
+        &self,
+        label: String,
+        host: String,
+        share: String,
+        username: String,
+        password: String,
+    ) -> Result<String, SfError> {
+        let auth = if username.is_empty() && password.is_empty() {
+            vfs_core::backends::SmbAuth::guest()
+        } else {
+            vfs_core::backends::SmbAuth::new(username, password)
+        };
+        let backend =
+            self.block_on(vfs_core::backends::SmbBackend::connect(&host, &share, auth))?;
+        let root = backend.root_id();
+        self.vfs.mount_at(&root, Arc::new(backend));
+        self.mounts.lock().unwrap().insert(
+            root.clone(),
+            MountInfo {
+                scheme: "smb".into(),
+                label,
+                root_id: root.clone(),
+            },
+        );
+        Ok(root)
+    }
+
+    /// Every mounted connection (local root excluded).
+    pub fn mounts(&self) -> Vec<MountInfo> {
+        self.mounts.lock().unwrap().values().cloned().collect()
+    }
+
+    /// Drop a mounted connection. Returns false when `root_id` wasn't mounted.
+    pub fn unmount(&self, root_id: String) -> bool {
+        self.mounts.lock().unwrap().remove(&root_id);
+        self.vfs.unmount(&root_id)
+    }
+
+    // ---------------------------------------------------------------- streams
+
+    /// Loopback HTTP(+Range) URL for any backend file with `can_seek`.
+    /// Hand it to AVPlayer / ExoPlayer directly. The server starts lazily and
+    /// dies with the core.
+    pub fn stream_url(&self, id: String) -> Result<String, SfError> {
+        let server = self.stream_server()?;
+        Ok(server.url_for(&id))
+    }
+
     // -------------------------------------------------------------- transfers
 
     /// Start a background copy. Returns a transfer id for polling/cancelling.
+    ///
+    /// When the core was opened with an index, the copy is journaled: a
+    /// process kill mid-way leaves a `pendingTransfers()` entry that
+    /// `resumeTransfer(id)` can continue instead of starting over.
     pub fn start_copy(
         &self,
         sources: Vec<String>,
@@ -373,10 +497,81 @@ impl SuperFiles {
             conflict: conflict.into(),
             ..Default::default()
         };
+        let index = self.index.clone();
         runtime().spawn(async move {
-            sfiles_engine::run(vfs, sources, dest_dir, opts, handle).await;
+            match index {
+                Some(index) => {
+                    sfiles_engine::run_resumable(vfs, sources, dest_dir, opts, handle, index, None)
+                        .await
+                }
+                None => sfiles_engine::run(vfs, sources, dest_dir, opts, handle).await,
+            }
         });
         Ok(id)
+    }
+
+    /// Transfers a previous run didn't finish (crash / killed app), restored
+    /// from the index. Ids already tracked by this process are excluded —
+    /// those are live and show up in `transfers()` instead. Errors when no
+    /// index was configured.
+    pub fn pending_transfers(&self) -> Result<Vec<PendingTransfer>, SfError> {
+        let index = self.require_index()?.clone();
+        let live: Vec<String> = self.transfers.lock().unwrap().keys().cloned().collect();
+        let rows = index.load_unfinished_transfers()?;
+        Ok(rows
+            .into_iter()
+            .filter(|row| !live.contains(&row.id))
+            .map(PendingTransfer::from)
+            .collect())
+    }
+
+    /// Continue a transfer persisted by a previous run (see
+    /// `pendingTransfers`). Sources and destination come from the stored
+    /// record; the id is kept, so polling/cancelling work exactly like with
+    /// a fresh `startCopy`.
+    ///
+    /// Resuming always uses the `Overwrite` conflict policy — for the file
+    /// being copied mid-way that is precisely "continue at the recorded
+    /// offset". The original policy isn't persisted, so anything else would
+    /// be a guess; callers wanting a fresh copy should `forgetTransfer` and
+    /// `startCopy` instead.
+    pub fn resume_transfer(&self, id: String) -> Result<(), SfError> {
+        let index = self.require_index()?.clone();
+        let stored = index
+            .load_unfinished_transfers()?
+            .into_iter()
+            .find(|row| row.id == id)
+            .ok_or_else(|| SfError::NotFound {
+                detail: format!("no resumable transfer {id}"),
+            })?;
+        let handle = Arc::new(TransferHandle::new(id.clone(), CancelToken::new()));
+        {
+            let mut registry = self.transfers.lock().unwrap();
+            if registry.contains_key(&id) {
+                return Err(SfError::AlreadyExists {
+                    detail: format!("transfer {id} is already tracked"),
+                });
+            }
+            registry.insert(id, handle.clone());
+        }
+
+        let vfs = self.vfs.clone();
+        runtime().spawn(async move {
+            sfiles_engine::run_resumable(
+                vfs,
+                stored.sources.clone(),
+                stored.dest_dir.clone(),
+                CopyOptions {
+                    conflict: EngineConflict::Overwrite,
+                    ..Default::default()
+                },
+                handle,
+                index,
+                Some(stored),
+            )
+            .await;
+        });
+        Ok(())
     }
 
     pub fn transfer_snapshot(&self, id: String) -> Option<TransferSnapshot> {
@@ -402,9 +597,14 @@ impl SuperFiles {
         }
     }
 
-    /// Drop a finished transfer from the registry (UI dismissed it).
+    /// Drop a finished transfer from the registry (UI dismissed it). Also
+    /// deletes its persisted resume record, if any — this is how a pending
+    /// transfer the user declined to resume goes away.
     pub fn forget_transfer(&self, id: String) {
         self.transfers.lock().unwrap().remove(&id);
+        if let Some(index) = &self.index {
+            let _ = index.forget_transfer(&id);
+        }
     }
 
     // ---------------------------------------------------------------- index
@@ -457,5 +657,18 @@ impl SuperFiles {
         self.index.clone().ok_or_else(|| SfError::Unsupported {
             detail: "index is not configured; reopen with an index path".into(),
         })
+    }
+
+    fn stream_server(&self) -> Result<Arc<sfiles_stream::StreamServer>, SfError> {
+        let mut slot = self.streamer.lock().unwrap();
+        if slot.is_none() {
+            let server = runtime()
+                .block_on(sfiles_stream::StreamServer::start(self.vfs.clone()))
+                .map_err(|err| SfError::Io {
+                    detail: format!("stream server: {err}"),
+                })?;
+            *slot = Some(Arc::new(server));
+        }
+        Ok(slot.as_ref().unwrap().clone())
     }
 }

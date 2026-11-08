@@ -11,10 +11,12 @@ use crate::uri::{self, split_id, LOCAL_SCHEME};
 /// Mount table + facade over all backends.
 ///
 /// UI code never sees a backend: it passes an entry id and the `Vfs` dispatches
-/// on the URI scheme. Adding SMB later means mounting one more backend, not
-/// touching Swift or Kotlin.
+/// on the id. Dispatch order: longest root-id prefix first (so several servers
+/// of the same protocol can be mounted side by side), then the legacy
+/// scheme-keyed table (the jailed local backend).
 pub struct Vfs {
     backends: RwLock<HashMap<String, Arc<dyn Backend>>>,
+    mounts: RwLock<Vec<(String, Arc<dyn Backend>)>>,
     local_root: String,
 }
 
@@ -28,6 +30,7 @@ impl Vfs {
     pub fn new() -> Self {
         Self {
             backends: RwLock::new(HashMap::new()),
+            mounts: RwLock::new(Vec::new()),
             local_root: String::new(),
         }
     }
@@ -48,8 +51,36 @@ impl Vfs {
         self.backends.write().unwrap().insert(scheme, backend);
     }
 
+    /// Mount a backend at an explicit root id (e.g. `webdav://nas:5006/`).
+    /// Two mounts may share a scheme as long as their roots differ.
+    pub fn mount_at(&self, root_id: &str, backend: Arc<dyn Backend>) {
+        let mut mounts = self.mounts.write().unwrap();
+        mounts.retain(|(root, _)| root != root_id); // remounting replaces
+        mounts.push((root_id.trim_end_matches('/').to_string(), backend));
+        mounts.sort_by_key(|mount| std::cmp::Reverse(mount.0.len())); // longest first
+    }
+
+    /// Remove a prefix-mounted backend. Returns whether something was removed.
+    pub fn unmount(&self, root_id: &str) -> bool {
+        let root = root_id.trim_end_matches('/');
+        let mut mounts = self.mounts.write().unwrap();
+        let before = mounts.len();
+        mounts.retain(|(r, _)| r != root);
+        mounts.len() != before
+    }
+
     pub fn local_root(&self) -> &str {
         &self.local_root
+    }
+
+    /// Prefix-mounted roots (what a connection UI lists).
+    pub fn mounted_roots(&self) -> Vec<String> {
+        self.mounts
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(root, _)| root.clone())
+            .collect()
     }
 
     pub fn mounted_schemes(&self) -> Vec<String> {
@@ -61,6 +92,12 @@ impl Vfs {
     /// Resolve the backend responsible for an id (used by the FFI layer for
     /// descriptor bridging, where the backend object itself is needed).
     pub fn backend_for(&self, id: &str) -> Result<Arc<dyn Backend>> {
+        // Longest root prefix wins; list is pre-sorted by prefix length.
+        for (root, backend) in self.mounts.read().unwrap().iter() {
+            if id == *root || id.starts_with(&format!("{root}/")) {
+                return Ok(backend.clone());
+            }
+        }
         let (scheme, _) = split_id(id);
         self.backends
             .read()
@@ -186,5 +223,74 @@ mod tests {
         assert!(matches!(err, VfsError::Unsupported(_)));
 
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Two servers of the same protocol, distinguished by root prefix.
+    #[tokio::test]
+    async fn prefix_mounts_dispatch_by_longest_root() {
+        struct Stub(&'static str);
+        #[async_trait::async_trait]
+        impl Backend for Stub {
+            fn scheme(&self) -> &'static str {
+                "webdav"
+            }
+            fn capabilities(&self) -> Capabilities {
+                Capabilities::READ_ONLY
+            }
+            async fn stat(&self, id: &str) -> Result<Entry> {
+                Ok(Entry {
+                    id: id.to_string(),
+                    parent: None,
+                    name: self.0.to_string(), // sentinel: which stub answered
+                    kind: crate::EntryKind::Directory,
+                    size: 0,
+                    modified_ms: None,
+                    mime: None,
+                    hidden: false,
+                    readonly: true,
+                })
+            }
+            async fn list(&self, _id: &str) -> Result<Vec<Entry>> {
+                Ok(vec![])
+            }
+            async fn create_dir(&self, _parent: &str, _name: &str) -> Result<Entry> {
+                unreachable!()
+            }
+            async fn create_file(&self, _parent: &str, _name: &str) -> Result<Entry> {
+                unreachable!()
+            }
+            async fn remove(&self, _id: &str, _recursive: bool) -> Result<()> {
+                unreachable!()
+            }
+            async fn rename(&self, _id: &str, _new_name: &str) -> Result<Entry> {
+                unreachable!()
+            }
+            async fn read_range(&self, _id: &str, _offset: u64, _len: usize) -> Result<Vec<u8>> {
+                Ok(vec![])
+            }
+            async fn write_range(&self, _id: &str, _offset: u64, _data: &[u8]) -> Result<()> {
+                unreachable!()
+            }
+            async fn truncate(&self, _id: &str, _size: u64) -> Result<()> {
+                unreachable!()
+            }
+        }
+
+        let vfs = Vfs::new();
+        vfs.mount_at("webdav://a.local/", Arc::new(Stub("server-a")));
+        vfs.mount_at("webdav://b.local/docs/", Arc::new(Stub("server-b-docs")));
+
+        // Longer prefix wins even though it was mounted second.
+        let entry = vfs.stat("webdav://b.local/docs/a.txt").await.unwrap();
+        assert_eq!(entry.name, "server-b-docs");
+        let entry = vfs.stat("webdav://a.local/a.txt").await.unwrap();
+        assert_eq!(entry.name, "server-a");
+
+        // Unmount b → fall through to a? no: no prefix matches → Unsupported.
+        assert!(vfs.unmount("webdav://b.local/docs"));
+        assert!(vfs.stat("webdav://b.local/docs/a.txt").await.is_err());
+
+        let err = vfs.stat("webdav://c.local/x").await.unwrap_err();
+        assert!(matches!(err, VfsError::Unsupported(_)));
     }
 }
