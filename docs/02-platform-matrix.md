@@ -47,8 +47,8 @@
 
 ### 3.1 多语言（Android）
 
-- 默认资源 = 英文（`values/strings.xml`），简体中文在 `values-zh/strings.xml`；非中/英文系统回退英文。
-- `res/xml/locales_config.xml` 声明 `en` / `zh-Hans`，Android 13+ 可在「设置 → App → 语言」单独切换。
+- 默认资源 = 英文（`values/strings.xml`），简体中文在 `values-zh/strings.xml`，繁體在 `values-b+zh+Hant/strings.xml`（OpenCC `s2twp`，同时覆盖 zh-TW / zh-HK）；非中/英文系统回退英文。
+- `res/xml/locales_config.xml` 声明 `en` / `zh-Hans` / `zh-Hant`，Android 13+ 可在「设置 → App → 语言」单独切换。
 - 文案统一 `L10n.t(R.string.…)`（Application 上下文初始化），Compose / ViewModel / 前台服务/通知共用；带参数用 `%1$s` 占位。
 - 新增文案：两套 XML 同步加同名字符串（key 为内容哈希/递增编号），中文自然语言搜索的关键词表（`NaturalLanguageQueryParser`）是解析器数据，不参与 UI 翻译。
 
