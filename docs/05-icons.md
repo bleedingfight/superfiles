@@ -49,5 +49,8 @@
 | symlink | `link` | `Shortcut` |
 | unknown file | `doc` | `InsertDriveFile` |
 
-颜色策略（M0 阶段）：目录 = 主题主色，其余 = 次级表面色；M5 再评估按类型着色。
+颜色策略：图标位统一为 46×50 r=10「类型徽章」（FileListRow.kt 单源）。按 Figma
+首页稿实测特化色：pdf = `#F6ECE8/#B7796E`，xls/xlsx/csv = `#EDF2ED/#6F8D7D`，
+doc/docx/txt/md = `#EAF0F8/#466DA6`；目录暖米+暖棕（`#F0EBE3/#A18460`）；
+其余文件中性兜底（SurfaceTint/OnSurfaceVariant）；新增特化色先在 tokens.json 登记。
 真实缩略图（M4）落地后盖在图标位之上，图标仅当底色/占位。

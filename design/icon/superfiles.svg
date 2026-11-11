@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Super Files · App icon
+  概念「叠页」：三页文档绕底部轴心扇形展开，逐级提亮，
+  前页端正居中、暖米白 + 右上折角，呼应 tokens:
+  primary #466DA6 / surface #F8F7F4 / 暖棕折角。
+  底板 1024×1024，圆角 228 ≈ iOS squircle。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5A87B9"/>
+      <stop offset="0.55" stop-color="#466DA6"/>
+      <stop offset="1" stop-color="#39597F"/>
+    </linearGradient>
+
+    <radialGradient id="glow" cx="0.5" cy="0.16" r="0.85">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.14"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="front" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FCFBF8"/>
+      <stop offset="1" stop-color="#F0ECE2"/>
+    </linearGradient>
+
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="20"/>
+    </filter>
+
+    <!-- 单页文档：360×470，r=52，轴心在底边中点（局部坐标） -->
+    <rect id="sheet" x="-180" y="-470" width="360" height="470" rx="52"/>
+
+    <!-- 前页：右上角 110px 斜折，折口两端小圆角 r≈20 -->
+    <path id="frontSheet" d="
+      M -128 -470
+      H 50
+      Q 70 -470 84.14 -455.86
+      L 165.86 -374.14
+      Q 180 -360 180 -340
+      V -52
+      A 52 52 0 0 1 128 0
+      H -128
+      A 52 52 0 0 1 -180 -52
+      V -418
+      A 52 52 0 0 1 -128 -470
+      Z"/>
+  </defs>
+
+  <!-- 底板 -->
+  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="228" fill="url(#glow)"/>
+
+  <!-- 整组投影 -->
+  <g transform="translate(512,778) scale(1.06)" filter="url(#soft)" opacity="0.16">
+    <use href="#sheet" transform="rotate(-9)" fill="#14202F"/>
+    <use href="#sheet" transform="rotate(9)" fill="#14202F"/>
+    <use href="#frontSheet" fill="#14202F"/>
+  </g>
+
+  <!-- 叠页：轴心 (512,762)，两侧页 ±9° 扇出 -->
+  <g transform="translate(512,762) scale(1.06)">
+    <use href="#sheet" transform="rotate(-9)" fill="#FFFFFF" opacity="0.24"/>
+    <use href="#sheet" transform="rotate(9)" fill="#FFFFFF" opacity="0.42"/>
+
+    <g>
+      <use href="#frontSheet" fill="url(#front)"/>
+      <!-- 折角翻页 -->
+      <path d="M 70 -470 L 180 -360 L 180 -470 Z" fill="#E2D3B4"/>
+    </g>
+  </g>
+</svg>

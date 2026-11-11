@@ -38,7 +38,9 @@ async fn live_roundtrip() {
         eprintln!("SF_TEST_SMB_HOST/SHARE not set; skipping live matrix run");
         return;
     };
-    let backend = SmbBackend::connect(&host, &share, auth).await.unwrap();
+    let backend = SmbBackend::connect(&host, &share, None, auth)
+        .await
+        .unwrap();
     let root = backend.root_id();
     let tag = format!(
         "sfiles-it-{}-{}",

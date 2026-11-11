@@ -16,18 +16,18 @@
 
 验收：`cargo test` 全绿；`./target/debug/sfiles ls/cp/index/search` 可用；Android `assembleDebug` 通过；iOS 工程需在 macOS 上 `scripts/build-ios.sh` 后编译。
 
-## M1 — 可用（下一步）
+## M1 — 可用（✅ 已完成）
 
 - [x] 传输任务持久化（SQLite `transfers` 表），杀进程可恢复
 - [x] 断点续传：记录 per-file offset，重启后继续
-- [ ] 列表结果写索引；离线浏览（断网展示缓存 + 过期标记）
-- [ ] 批量选择、重命名、移动（跨后端走复制+删除）
-- [ ] 冲突对话框（覆盖/跳过/重命名/全部应用）
-- [ ] Android：Foreground Service + 通知进度
-- [ ] iOS：HTTP 后端的 background URLSession
+- [x] 列表结果写索引；离线浏览（`list()` 成功即 upsert + 删除对账 + `list_states` 更新时间戳；实时列举失败 UI 回退 `listCached()` 并显示「离线缓存 · 更新于 X」横幅；Android/iOS 双端）
+- [x] 批量选择、移动（复制/删除）：长按进入多选（选择顶栏 + 全选 + 返回键退出），底部操作条复制/移动/压缩/删除；移动跨后端走复制+删除（引擎事务完成后清理源）；重命名为单条「⋯」菜单既有能力
+- [x] 冲突对话框（覆盖/跳过/重命名/全部应用）：复制/移动前探测目标同名项，逐项弹窗（批量显示「第 N/M 项」），决策完按策略分组下发引擎（跳过组不下发）
+- [x] Android：Foreground Service（`dataSync`）+ 通知栏实时进度（活跃传输拉启、空闲退场；POST_NOTIFICATIONS 运行时申请；修复传输轮询/取消/恢复跨内核路由）
+- [x] iOS：HTTP 后端的 background URLSession（`BackgroundDownloadManager`：任务映射持久化、同名避让、完成事件经 AppDelegate 冷启动回投；行内「下载到本地」经回环 streamUrl 落 Documents/下载/；ATS 放开本地网段）
 - [x] FTS5 搜索（中文分词/拼音）替换 LIKE（trigram：中文子串 + 全拼/首字母拼音 + 英文，默认 FTS5、短查询回退 LIKE；`source` 列为 M2 聚合索引打底）
 
-验收：1 GB 文件传输、杀进程后恢复、断网下能看缓存目录。
+验收：1 GB 文件传输（FGS 保活）、杀进程后恢复（索引档案 + `pendingTransfers`）、断网下能看缓存目录（`listCached` 回退）。
 
 ## M2 — 网络存储
 
@@ -41,6 +41,7 @@
 - [ ] Android `DocumentsProvider`
 - [x] 本地回环 HTTP 服务（Range）供 AVPlayer/ExoPlayer 播远程视频（`crates/stream`：token 保护 URL、206/416、HEAD、并发连接；FFI 暴露随 WebDAV 连接管理一起做）
 - [x] FFI 连接管理接口：`mountWebdav` / `mountSmb` / `mounts` / `unmount` / `streamUrl`（多 NAS 按 root 前缀分流）
+- [x] iOS / iPadOS 客户端（三栏 `NavigationSplitView`：位置 / 列表 / 详情；WebDAV/SMB/SFTP 挂载、复制/移动 + 传输中心、收藏/最近/搜索、QuickLook/视频内联预览）
 - [ ] 连接管理 UI（凭据存 Keychain/Keystore）
 
 验收：手机能在系统「文件」App 里浏览 NAS；电视能直接播 NAS 视频。
@@ -52,6 +53,17 @@
 - [ ] 多账号、限流退避、配额显示
 - [ ] 双向同步（可选）：冲突版本保留策略
 - [ ] 离线收藏与自动下载
+
+## M3.5 — 就近分享（ADR 0005）
+
+- [x] ShareServer：LAN HTTP 服务（HTML 索引页 + manifest.json + Range 文件分发；token 防枚举；仅入选文件可达；关闭即焚）
+- [x] Android 发送：⋯/多选「分享链接…」→ zxing 二维码 + 链接对话框（停止即焚）
+- [x] Android 接收：文件页「⋯ → 接收文件…」粘贴链接 → 清单确认 → 分块拉取经 VFS 落盘（重名避让、半成品清理、逐文件进度）
+- [ ] iOS 发送/接收（ShareServer 是同一份内核代码，接 UI 即可；后台续传受系统限制）
+- [ ] 增强：扫码接收（相机）、目录直发（内部先打包）、App 对 App 断点续传
+- 明确不做：设备发现/配对、自定义双端协议、互联网中继（见 ADR 0005）
+
+验收（Android）：两部手机同 Wi-Fi，A 分享 1 个 100MB 视频 → B 浏览器直接下载成功；B 装 App → 粘贴链接收到「下载/DCIM」且可断在线缆（= Range）后重拉。
 
 ## M4 — 媒体库
 

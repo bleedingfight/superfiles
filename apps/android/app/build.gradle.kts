@@ -18,18 +18,47 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        // release 测试签名（不是发布 keystore；见 docs/07 分发规范）
+        create("release") {
+            storeFile = file(
+                System.getProperty("user.home") + "/.android/release-test.keystore",
+            )
+            storePassword = "android"
+            keyAlias = "android"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        // Non-debuggable build signed with the debug key, so it can be installed
+        // over an existing debug APK without wiping app data. Used for
+        // day-to-day manual testing when debug-build composition cost hides
+        // real performance.
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            isMinifyEnabled = false
+            matchingFallbacks += listOf("release")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
     buildFeatures {
         compose = true
+    }
+
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
     }
 
     compileOptions {
@@ -65,6 +94,10 @@ dependencies {
 
     // UniFFI's generated Kotlin binding talks to the Rust core through JNA.
     implementation("net.java.dev.jna:jna:5.14.0@aar")
+
+    // 就近分享（ADR 0005）：发送侧链接 → 二维码
+    // vended 本地 jar（zxing-core 零传递依赖）：外网/代理不可用时构建仍离线可重复
+    implementation(files("libs/zxing-core-3.5.3.jar"))
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

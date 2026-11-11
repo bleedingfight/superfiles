@@ -5,6 +5,7 @@ members = [
     "crates/engine",
     "crates/index",
     "crates/stream",
+    "crates/localsend",
     "crates/sfiles-ffi",
     "crates/sfiles-bindgen",
     "crates/sfiles-cli",
@@ -21,6 +22,7 @@ vfs-core = { path = "crates/vfs-core" }
 sfiles-engine = { path = "crates/engine" }
 sfiles-index = { path = "crates/index" }
 sfiles-stream = { path = "crates/stream" }
+sfiles-localsend = { path = "crates/localsend" }
 
 uniffi = "0.32"
 thiserror = "2"
@@ -28,7 +30,7 @@ async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "fs", "sync", "time", "macros"] }
 
 # Network backends (vfs-core feature gates: webdav / smb / sftp)
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "charset"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "charset"] }
 quick-xml = "0.42"
 percent-encoding = "2"
 # NOTE: sspi's curve25519-dalek RC pin only exists for macOS/iOS targets, so
@@ -54,6 +56,12 @@ futures-util = "0.3"
 #              rsa =0.10.0-rc.18 whose rand_core 0.10 traits break its build
 russh = "0.55"
 russh-sftp = "2.1.2"
+
+# Local one-line patch: smb-rs never sets TCP_NODELAY, so Nagle + delayed ACK
+# cost ~40ms per SMB round trip (measured 19 MiB/s vs 103 MiB/s with
+# smbclient). See vendor/smb-transport/src/tcp/transport.rs (LOCAL PATCH).
+[patch.crates-io]
+smb-transport = { path = "vendor/smb-transport" }
 
 [profile.release]
 lto = "thin"

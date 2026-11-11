@@ -15,7 +15,18 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 仅在用户主动点「从系统账户导入」时请求，用于填充昵称候选 -->
+    <uses-permission android:name="android.permission.GET_ACCOUNTS" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+      仅供售后/联调定位问题：授予需 `adb shell pm grant <pkg> android.permission.READ_LOGS`，
+      设备重启不失效；未授予时诊断包自动退回「仅本应用 tag」的 logcat，无权限也能导出。
+      注意：Play 商店对 READ_LOGS 有政策限制，正式发布渠道应移除。
+    -->
+    <uses-permission android:name="android.permission.READ_LOGS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
@@ -27,16 +38,23 @@
         android:name="android.hardware.touchscreen"
         android:required="false" />
 
+    <!-- 内网明文 HTTP：就近分享链接（ADR 0005）与局域网 WebDAV 都是 http://192.168…/10.0…；
+         公网业务在 Rust 内核走 https，不受此开关影响。 -->
     <application
-        android:allowBackup="true"
-        android:icon="@drawable/ic_launcher"
+        android:name=".SuperFilesApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:localeConfig="@xml/locales_config"
         android:supportsRtl="true"
-        android:theme="@style/Theme.SuperFiles">
+        android:theme="@style/Theme.SuperFiles"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:theme="@style/Theme.SuperFiles">
             <intent-filter>
@@ -44,6 +62,50 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+
+            <!-- 从其他 App 分享文件到 superfiles（系统分享面板） -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+
+            <!-- 云盘 OAuth 回调深链：superfiles://oauth/callback -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="superfiles" android:host="oauth" android:path="/callback" />
+            </intent-filter>
         </activity>
+
+        <!-- 远端文件流式读取（按偏移代理，不整包下载） -->
+        <provider
+            android:name=".stream.RemoteFileProvider"
+            android:authorities="${applicationId}.stream"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <!-- M1：传输进行中保持进程存活 + 通知栏进度（活跃时由 ViewModel 拉启） -->
+        <service
+            android:name=".TransferService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- 「打开方式」把应用私有存储里的文件外发给其他应用 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

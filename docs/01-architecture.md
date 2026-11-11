@@ -79,8 +79,12 @@ UI 按变体决定交互，不解析 message：
 ## 7. 索引与离线
 
 - SQLite（WAL）存 `entries`（id / parent / name / kind / size / mtime / mime / hidden / readonly）。
-- 搜索 M0 用 `LIKE`（大小写不敏感、转义通配符），M1 换 FTS5（中文分词/拼音）。
+- 搜索 M0 用 `LIKE`（大小写不敏感、转义通配符），M1 起为 FTS5（trigram 中文子串 + 拼音 sidecar），短查询回退 LIKE。
 - 传输任务状态 M0 在内存；M1 落库以获得「杀进程后恢复」。
+- 离线浏览（M1 起）：`list()` 成功后即时把结果 upsert 进索引（含删除对账），并在
+  `list_states` 表记录该目录的上次列举时间；实时列举失败时 UI 回退
+  `listCached()`（索引中该目录的直接子项 + 上次更新时间），以「离线缓存 · 更新于 X」
+  横幅标注过期语。缓存只读：离线状态下不发起写操作（写路径仍实时穿透到后端）。
 
 ## 8. 目录布局约定
 

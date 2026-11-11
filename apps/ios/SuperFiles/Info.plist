@@ -43,6 +43,18 @@
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
 
+    <!-- M1：回环 stream server（127.0.0.1）与局域网 NAS（http）的 ATS 例外；
+         范围仅本地网络，公网仍走默认 ATS。 -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+
+    <!-- 直连局域网 NAS（WebDAV / SMB / SFTP）时的本地网络权限文案。 -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>用于连接局域网内的 WebDAV / SMB / SFTP 存储，浏览与传输文件。</string>
+
     <!-- M2 adds the File Provider extension. -->
 </dict>
 </plist>

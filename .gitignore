@@ -23,3 +23,11 @@ DerivedData/
 .idea/
 .vscode/
 .DS_Store
+.cargo/
+
+# Build outputs / generated exports
+*.apk
+*.aab
+/apps/android/.kotlin/
+/design/icon/*.png
+/vendor/*/.cargo_vcs_info.json

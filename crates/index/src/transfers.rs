@@ -64,6 +64,8 @@ pub struct StoredTransfer {
     pub id: String,
     pub sources: Vec<String>,
     pub dest_dir: String,
+    /// 移动任务（复制成功后删除源）。持久化是为了进程被杀后恢复仍能完成删除。
+    pub is_move: bool,
     pub state: TransferTaskState,
     pub files_total: u64,
     pub files_done: u64,
@@ -91,6 +93,7 @@ impl StoredTransfer {
             id: id.into(),
             sources,
             dest_dir: dest_dir.into(),
+            is_move: false,
             state: TransferTaskState::Running,
             files_total,
             files_done: 0,
@@ -110,6 +113,7 @@ CREATE TABLE IF NOT EXISTS transfers (
     id                TEXT PRIMARY KEY,
     sources_json      TEXT NOT NULL,
     dest_dir          TEXT NOT NULL,
+    is_move           INTEGER NOT NULL DEFAULT 0,
     state             TEXT NOT NULL,
     files_total       INTEGER NOT NULL DEFAULT 0,
     files_done        INTEGER NOT NULL DEFAULT 0,
@@ -128,13 +132,13 @@ pub(super) fn save_transfer(conn: &Connection, transfer: &StoredTransfer) -> Res
     let now = now_ms();
     conn.execute(
         r#"INSERT INTO transfers
-             (id, sources_json, dest_dir, state,
+             (id, sources_json, dest_dir, is_move, state,
               files_total, files_done, bytes_total, bytes_done,
               file_offsets_json, error, created_at, updated_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
            ON CONFLICT(id) DO UPDATE SET
              sources_json=excluded.sources_json, dest_dir=excluded.dest_dir,
-             state=excluded.state,
+             is_move=excluded.is_move, state=excluded.state,
              files_total=excluded.files_total, files_done=excluded.files_done,
              bytes_total=excluded.bytes_total, bytes_done=excluded.bytes_done,
              file_offsets_json=excluded.file_offsets_json, error=excluded.error,
@@ -143,6 +147,7 @@ pub(super) fn save_transfer(conn: &Connection, transfer: &StoredTransfer) -> Res
             transfer.id,
             to_json(&transfer.sources)?,
             transfer.dest_dir,
+            transfer.is_move as i32,
             transfer.state.as_str(),
             transfer.files_total as i64,
             transfer.files_done as i64,
@@ -206,7 +211,7 @@ pub(super) fn finish_transfer(
 pub(super) fn load_unfinished_transfers(conn: &Connection) -> Result<Vec<StoredTransfer>> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, sources_json, dest_dir, state,
+            "SELECT id, sources_json, dest_dir, is_move, state,
                     files_total, files_done, bytes_total, bytes_done,
                     file_offsets_json, error, created_at, updated_at
              FROM transfers
@@ -230,8 +235,8 @@ pub(super) fn forget_transfer(conn: &Connection, id: &str) -> Result<()> {
 
 fn row_to_transfer(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredTransfer> {
     let sources_json: String = row.get(1)?;
-    let state: String = row.get(3)?;
-    let offsets_json: String = row.get(8)?;
+    let state: String = row.get(4)?;
+    let offsets_json: String = row.get(9)?;
     Ok(StoredTransfer {
         id: row.get(0)?,
         // Malformed JSON in a row we wrote ourselves is data corruption;
@@ -239,15 +244,16 @@ fn row_to_transfer(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredTransfer> 
         // the whole listing.
         sources: from_json(&sources_json).unwrap_or_default(),
         dest_dir: row.get(2)?,
+        is_move: row.get::<_, i64>(3)? != 0,
         state: TransferTaskState::from_str(&state),
-        files_total: row.get::<_, i64>(4)? as u64,
-        files_done: row.get::<_, i64>(5)? as u64,
-        bytes_total: row.get::<_, i64>(6)? as u64,
-        bytes_done: row.get::<_, i64>(7)? as u64,
+        files_total: row.get::<_, i64>(5)? as u64,
+        files_done: row.get::<_, i64>(6)? as u64,
+        bytes_total: row.get::<_, i64>(7)? as u64,
+        bytes_done: row.get::<_, i64>(8)? as u64,
         file_offsets: from_json(&offsets_json).unwrap_or_default(),
-        error: row.get(9)?,
-        created_at: row.get(10)?,
-        updated_at: row.get(11)?,
+        error: row.get(10)?,
+        created_at: row.get(11)?,
+        updated_at: row.get(12)?,
     })
 }
 
@@ -273,6 +279,7 @@ mod tests {
 
     fn stored(id: &str) -> StoredTransfer {
         StoredTransfer {
+            is_move: false,
             id: id.to_string(),
             sources: vec!["local:///src/a".into(), "local:///src/b".into()],
             dest_dir: "local:///dst".into(),

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!--
+    Super Files 主图标（bolt 变体，当前 Android 程序图标的矢量源）。
+    构图参考 superfiles-icons 图标包推荐方案 sbadge：叠层文件 × 闪电 × S 徽章；
+    配色全部取自 ../tokens.json（与 superfiles.svg 同源）：
+    底板  #5A87B9→#466DA6→#39597F  品牌蓝纵向渐变（primary 系）
+    后层  #304D76                   usageDeep
+    前层  #FCFBF8→#F0ECE2           surface 系暖白渐变
+    闪电  #466DA6                   primary
+    徽章  #FFFFFF 圈 + #A18460 描边  surfaceCard + primaryWarm
+
+    与 superfiles.svg（叠页版）并列的两个候选方向之一；
+    Android 自适应图标 = 本文件去底板圆角分层导出（见 res/drawable/ic_launcher_*.xml）。
+  -->
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5A87B9"/>
+      <stop offset="0.5" stop-color="#466DA6"/>
+      <stop offset="1" stop-color="#39597F"/>
+    </linearGradient>
+    <linearGradient id="sheet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FCFBF8"/>
+      <stop offset="1" stop-color="#F0ECE2"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="90" fill="url(#plate)"/>
+
+  <g transform="rotate(10 280 270)">
+    <rect x="156" y="104" width="248" height="322" rx="34" fill="#304D76"/>
+  </g>
+  <rect x="112" y="86" width="248" height="322" rx="34" fill="url(#sheet)"/>
+
+  <path d="M272 148 L216 268 L258 268 L238 376 L320 246 L276 246 L300 148 Z"
+        fill="#466DA6"/>
+
+  <g transform="translate(332 332)">
+    <circle r="64" fill="#FFFFFF"/>
+    <path d="M 22 -28 L -24 -28 L -22 28 L 24 28"
+          fill="none" stroke="#A18460" stroke-width="17"
+          stroke-linecap="round" stroke-linejoin="miter"/>
+  </g>
+</svg>

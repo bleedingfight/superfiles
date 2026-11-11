@@ -91,6 +91,78 @@ fn unsupported_scheme_is_reported() {
 }
 
 #[test]
+fn nearby_share_lifecycle() {
+    let root = temp_dir("share");
+    let core = SuperFiles::open(root.to_string_lossy().into_owned(), None).unwrap();
+    let file = core.create_file(core.root_id(), "photo.jpg".into()).unwrap();
+    core.write_bytes(file.id.clone(), 0, vec![1u8; 1024])
+        .unwrap();
+
+    // 目录不可分享（提示先压缩）；空列表报错。
+    assert!(matches!(
+        core.start_share(vec![]).unwrap_err(),
+        superfiles::SfError::InvalidName { .. }
+    ));
+    assert!(matches!(
+        core.start_share(vec![core.root_id()]).unwrap_err(),
+        superfiles::SfError::Unsupported { .. }
+    ));
+
+    // 正常启动 → 链接是局域网 http + token 路径；再次启动替换且可显式关闭。
+    let info = core.start_share(vec![file.id]).unwrap();
+    assert_eq!(info.file_count, 1);
+    assert!(info.url.starts_with("http://") && info.url.ends_with('/'), "url={}", info.url);
+    let info2 = core.start_share(vec![]).err(); // 替换前先报错：空列表不动旧会话
+    assert!(info2.is_some());
+    assert!(core.stop_share());
+    assert!(!core.stop_share()); // 幂等
+
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn list_writes_through_to_the_offline_cache() {
+    let root = temp_dir("offline-cache");
+    let db_dir = temp_dir("offline-cache-db");
+    let db = db_dir.join("index.sqlite");
+    let core = SuperFiles::open(
+        root.to_string_lossy().into_owned(),
+        Some(db.to_string_lossy().into_owned()),
+    )
+    .unwrap();
+    let root_id = core.root_id();
+
+    // 无缓存时：空列表 + 无时间戳。
+    let cold = core.list_cached(root_id.clone());
+    assert!(cold.entries.is_empty());
+    assert!(cold.listed_at_ms.is_none());
+
+    let docs = core.create_dir(root_id.clone(), "Docs".into()).unwrap();
+    core.create_file(docs.id.clone(), "a.txt".into()).unwrap();
+    core.create_file(docs.id.clone(), "b.txt".into()).unwrap();
+    let live = core.list(docs.id.clone()).unwrap();
+    assert_eq!(live.len(), 2);
+
+    // list() 成功即写入缓存：子项 + 更新时间。
+    let cached = core.list_cached(docs.id.clone());
+    assert_eq!(cached.entries.len(), 2);
+    assert!(cached.listed_at_ms.is_some());
+
+    // 删除对账：实时列举后消失的条目不再出现在缓存里。
+    core.remove(docs.id.clone() + "/a.txt", false).unwrap();
+    assert_eq!(core.list_cached(docs.id.clone()).entries.len(), 2);
+    core.list(docs.id.clone()).unwrap();
+    assert_eq!(core.list_cached(docs.id.clone()).entries.len(), 1);
+
+    // 无索引的内核：list_cached 安全返回空（离线浏览不可用）。
+    let no_index = SuperFiles::open(temp_dir("no-index").to_string_lossy().into_owned(), None).unwrap();
+    assert!(no_index.list_cached(no_index.root_id()).entries.is_empty());
+
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::remove_dir_all(&db_dir).ok();
+}
+
+#[test]
 fn mounts_and_stream_url_flow() {
     let root = temp_dir("mounts");
     let core = SuperFiles::open(root.to_string_lossy().into_owned(), None).unwrap();

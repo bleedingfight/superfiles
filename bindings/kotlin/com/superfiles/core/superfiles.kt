@@ -650,6 +650,56 @@ internal open class UniffiForeignFutureResultVoid(
 internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
     fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultVoid.UniffiByValue,)
 }
+internal interface UniffiCallbackInterfaceIndexProgressListenerMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`directories`: Long,`entries`: Long,`fraction`: Float,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceIndexProgressListenerMethod1 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`total`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceZipProgressListenerMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`done`: Long,`total`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "onProgress", "onFinished")
+internal open class UniffiVTableCallbackInterfaceIndexProgressListener(
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+    @JvmField internal var `onProgress`: UniffiCallbackInterfaceIndexProgressListenerMethod0? = null,
+    @JvmField internal var `onFinished`: UniffiCallbackInterfaceIndexProgressListenerMethod1? = null,
+) : Structure() {
+    class UniffiByValue(
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+        `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+        `onProgress`: UniffiCallbackInterfaceIndexProgressListenerMethod0? = null,
+        `onFinished`: UniffiCallbackInterfaceIndexProgressListenerMethod1? = null,
+    ): UniffiVTableCallbackInterfaceIndexProgressListener(`uniffiFree`,`uniffiClone`,`onProgress`,`onFinished`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceIndexProgressListener) {
+        `uniffiFree` = other.`uniffiFree`
+        `uniffiClone` = other.`uniffiClone`
+        `onProgress` = other.`onProgress`
+        `onFinished` = other.`onFinished`
+    }
+
+}
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "onProgress")
+internal open class UniffiVTableCallbackInterfaceZipProgressListener(
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+    @JvmField internal var `onProgress`: UniffiCallbackInterfaceZipProgressListenerMethod0? = null,
+) : Structure() {
+    class UniffiByValue(
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+        `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+        `onProgress`: UniffiCallbackInterfaceZipProgressListenerMethod0? = null,
+    ): UniffiVTableCallbackInterfaceZipProgressListener(`uniffiFree`,`uniffiClone`,`onProgress`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceZipProgressListener) {
+        `uniffiFree` = other.`uniffiFree`
+        `uniffiClone` = other.`uniffiClone`
+        `onProgress` = other.`onProgress`
+    }
+
+}
 
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
@@ -675,11 +725,35 @@ internal object IntegrityCheckingUniffiLib {
     }
 
     internal fun ensureInitialized() = Unit
+    external fun uniffi_superfiles_checksum_method_indexprogresslistener_on_progress(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_indexprogresslistener_on_finished(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_localsendhandle_announce(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_localsendhandle_errors(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_localsendhandle_info(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_localsendhandle_is_running(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_localsendhandle_peers(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_localsendhandle_register_at(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_localsendhandle_send(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_localsendhandle_stop(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_add_favorite(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_cancel_transfer(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_capabilities(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_clear_index(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_compress_zip(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_create_dir(
     ): Int
@@ -689,6 +763,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_export_to_fd(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_favorites(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_forget_transfer(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_import_from_fd(
@@ -697,9 +773,15 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_index_dir(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_index_dir_with_progress(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_join(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_list(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_list_cached(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_local_send_handle(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_mount_sftp(
     ): Int
@@ -713,7 +795,13 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_read_bytes(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_recent_files(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_record_open(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_remove(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_remove_favorite(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_rename(
     ): Int
@@ -723,9 +811,23 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_search(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_smb_list_shares(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_start_copy(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_start_local_send(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_start_move(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_start_share(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_start_transfer(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_stat(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_stop_local_send(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_stop_share(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_stream_url(
     ): Int
@@ -738,6 +840,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_superfiles_checksum_method_superfiles_version(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_write_bytes(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_zipprogresslistener_on_progress(
     ): Int
     external fun uniffi_superfiles_checksum_constructor_superfiles_open(
     ): Int
@@ -757,22 +861,58 @@ internal object UniffiLib {
 
     init {
         Native.register(UniffiLib::class.java, findLibraryName(componentName = "superfiles"))
+        uniffiCallbackInterfaceIndexProgressListener.register(this)
+        uniffiCallbackInterfaceZipProgressListener.register(this)
         
     }
 
     internal fun ensureInitialized() = Unit
+    external fun uniffi_superfiles_fn_clone_indexprogresslistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_superfiles_fn_free_indexprogresslistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_superfiles_fn_init_callback_vtable_indexprogresslistener(`vtable`: UniffiVTableCallbackInterfaceIndexProgressListener,
+    ): Unit
+    external fun uniffi_superfiles_fn_method_indexprogresslistener_on_progress(`ptr`: Long,`directories`: Long,`entries`: Long,`fraction`: Float,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_superfiles_fn_method_indexprogresslistener_on_finished(`ptr`: Long,`total`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_superfiles_fn_clone_localsendhandle(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_superfiles_fn_free_localsendhandle(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_superfiles_fn_method_localsendhandle_announce(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_superfiles_fn_method_localsendhandle_errors(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_localsendhandle_info(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_localsendhandle_is_running(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
+    external fun uniffi_superfiles_fn_method_localsendhandle_peers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_localsendhandle_register_at(`ptr`: Long,`ip`: RustBuffer.ByValue,`port`: Short,`fingerprint`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_localsendhandle_send(`ptr`: Long,`peer`: RustBuffer.ByValue,`ids`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_superfiles_fn_method_localsendhandle_stop(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     external fun uniffi_superfiles_fn_clone_superfiles(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     external fun uniffi_superfiles_fn_free_superfiles(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun uniffi_superfiles_fn_constructor_superfiles_open(`localRoot`: RustBuffer.ByValue,`indexPath`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
+    external fun uniffi_superfiles_fn_method_superfiles_add_favorite(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_cancel_transfer(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_capabilities(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_clear_index(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
+    external fun uniffi_superfiles_fn_method_superfiles_compress_zip(`ptr`: Long,`sources`: RustBuffer.ByValue,`destDir`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,`method`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_create_dir(`ptr`: Long,`parent`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_create_file(`ptr`: Long,`parent`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -781,6 +921,8 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_export_to_fd(`ptr`: Long,`id`: RustBuffer.ByValue,`fd`: Int,`offset`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
+    external fun uniffi_superfiles_fn_method_superfiles_favorites(`ptr`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_forget_transfer(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_import_from_fd(`ptr`: Long,`id`: RustBuffer.ByValue,`fd`: Int,`offset`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -789,13 +931,19 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_superfiles_fn_method_superfiles_index_dir(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
+    external fun uniffi_superfiles_fn_method_superfiles_index_dir_with_progress(`ptr`: Long,`id`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
     external fun uniffi_superfiles_fn_method_superfiles_join(`ptr`: Long,`parent`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_list(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_list_cached(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_local_send_handle(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_mount_sftp(`ptr`: Long,`label`: RustBuffer.ByValue,`host`: RustBuffer.ByValue,`port`: Int,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    external fun uniffi_superfiles_fn_method_superfiles_mount_smb(`ptr`: Long,`label`: RustBuffer.ByValue,`host`: RustBuffer.ByValue,`share`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    external fun uniffi_superfiles_fn_method_superfiles_mount_smb(`ptr`: Long,`label`: RustBuffer.ByValue,`host`: RustBuffer.ByValue,`share`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`port`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_mount_webdav(`ptr`: Long,`label`: RustBuffer.ByValue,`baseUrl`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -805,7 +953,13 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_read_bytes(`ptr`: Long,`id`: RustBuffer.ByValue,`offset`: Long,`len`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_recent_files(`ptr`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_record_open(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_remove(`ptr`: Long,`id`: RustBuffer.ByValue,`recursive`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_superfiles_fn_method_superfiles_remove_favorite(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_rename(`ptr`: Long,`id`: RustBuffer.ByValue,`newName`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -815,10 +969,24 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_search(`ptr`: Long,`query`: RustBuffer.ByValue,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_smb_list_shares(`ptr`: Long,`host`: RustBuffer.ByValue,`port`: Int,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_start_copy(`ptr`: Long,`sources`: RustBuffer.ByValue,`destDir`: RustBuffer.ByValue,`conflict`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_start_local_send(`ptr`: Long,`options`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_superfiles_fn_method_superfiles_start_move(`ptr`: Long,`sources`: RustBuffer.ByValue,`destDir`: RustBuffer.ByValue,`conflict`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_start_share(`ptr`: Long,`ids`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_start_transfer(`ptr`: Long,`sources`: RustBuffer.ByValue,`destDir`: RustBuffer.ByValue,`conflict`: RustBuffer.ByValue,`isMove`: Byte,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_stat(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_stop_local_send(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_superfiles_fn_method_superfiles_stop_share(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
     external fun uniffi_superfiles_fn_method_superfiles_stream_url(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_transfer_snapshot(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -830,6 +998,14 @@ internal object UniffiLib {
     external fun uniffi_superfiles_fn_method_superfiles_version(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_write_bytes(`ptr`: Long,`id`: RustBuffer.ByValue,`offset`: Long,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_superfiles_fn_clone_zipprogresslistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_superfiles_fn_free_zipprogresslistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_superfiles_fn_init_callback_vtable_zipprogresslistener(`vtable`: UniffiVTableCallbackInterfaceZipProgressListener,
+    ): Unit
+    external fun uniffi_superfiles_fn_method_zipprogresslistener_on_progress(`ptr`: Long,`done`: Long,`total`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun ffi_superfiles_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -950,6 +1126,39 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
+    if ((lib.uniffi_superfiles_checksum_method_indexprogresslistener_on_progress() and 0xFFFF) != 22385) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_indexprogresslistener_on_finished() and 0xFFFF) != 10850) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_localsendhandle_announce() and 0xFFFF) != 41748) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_localsendhandle_errors() and 0xFFFF) != 65413) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_localsendhandle_info() and 0xFFFF) != 14408) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_localsendhandle_is_running() and 0xFFFF) != 64184) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_localsendhandle_peers() and 0xFFFF) != 18788) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_localsendhandle_register_at() and 0xFFFF) != 47843) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_localsendhandle_send() and 0xFFFF) != 1083) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_localsendhandle_stop() and 0xFFFF) != 47705) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_add_favorite() and 0xFFFF) != 21707) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_cancel_transfer() and 0xFFFF) != 18000) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -957,6 +1166,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_clear_index() and 0xFFFF) != 49058) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_compress_zip() and 0xFFFF) != 5552) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_create_dir() and 0xFFFF) != 10638) {
@@ -971,6 +1183,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_export_to_fd() and 0xFFFF) != 242) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_favorites() and 0xFFFF) != 27258) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_forget_transfer() and 0xFFFF) != 12967) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -983,16 +1198,25 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_index_dir() and 0xFFFF) != 61801) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_index_dir_with_progress() and 0xFFFF) != 56713) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_join() and 0xFFFF) != 17171) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_list() and 0xFFFF) != 33029) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_list_cached() and 0xFFFF) != 43391) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_local_send_handle() and 0xFFFF) != 35404) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_mount_sftp() and 0xFFFF) != 42724) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_superfiles_checksum_method_superfiles_mount_smb() and 0xFFFF) != 46850) {
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_mount_smb() and 0xFFFF) != 54856) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_mount_webdav() and 0xFFFF) != 36434) {
@@ -1007,7 +1231,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_read_bytes() and 0xFFFF) != 59465) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_recent_files() and 0xFFFF) != 31109) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_record_open() and 0xFFFF) != 3400) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_remove() and 0xFFFF) != 39390) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_remove_favorite() and 0xFFFF) != 21818) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_rename() and 0xFFFF) != 38276) {
@@ -1022,10 +1255,31 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_search() and 0xFFFF) != 33314) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_smb_list_shares() and 0xFFFF) != 16507) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_start_copy() and 0xFFFF) != 21211) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_start_local_send() and 0xFFFF) != 43733) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_start_move() and 0xFFFF) != 1738) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_start_share() and 0xFFFF) != 28344) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_start_transfer() and 0xFFFF) != 19907) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_stat() and 0xFFFF) != 17632) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_stop_local_send() and 0xFFFF) != 55366) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_stop_share() and 0xFFFF) != 5142) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_stream_url() and 0xFFFF) != 9171) {
@@ -1044,6 +1298,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_write_bytes() and 0xFFFF) != 42330) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_zipprogresslistener_on_progress() and 0xFFFF) != 22129) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_constructor_superfiles_open() and 0xFFFF) != 45316) {
@@ -1140,7 +1397,38 @@ object UniffiWithHandle
  *
  * @suppress
  * */
-object NoHandle
+object NoHandle// Magic number for the Rust proxy to call using the same mechanism as every other method,
+// to free the callback once it's dropped by Rust.
+internal const val IDX_CALLBACK_FREE = 0
+// Callback return codes
+internal const val UNIFFI_CALLBACK_SUCCESS = 0
+internal const val UNIFFI_CALLBACK_ERROR = 1
+internal const val UNIFFI_CALLBACK_UNEXPECTED_ERROR = 2
+
+/**
+ * @suppress
+ */
+public abstract class FfiConverterCallbackInterface<CallbackInterface: Any>: FfiConverter<CallbackInterface, Long> {
+    internal val handleMap = UniffiHandleMap<CallbackInterface>()
+
+    internal fun drop(handle: Long) {
+        handleMap.remove(handle)
+    }
+
+    override fun lift(value: Long): CallbackInterface {
+        return handleMap.get(value)
+    }
+
+    override fun read(buf: ByteBuffer) = lift(buf.getLong())
+
+    override fun lower(value: CallbackInterface) = handleMap.insert(value)
+
+    override fun allocationSize(value: CallbackInterface) = 8UL
+
+    override fun write(value: CallbackInterface, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
 /**
  * The cleaner interface for Object finalization code to run.
  * This is the entry point to any implementation that we're using.
@@ -1204,6 +1492,33 @@ private class JavaLangRefCleanable(
     val cleanable: java.lang.ref.Cleaner.Cleanable
 ) : UniffiCleaner.Cleanable {
     override fun clean() = cleanable.clean()
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterUShort: FfiConverter<UShort, Short> {
+    override fun lift(value: Short): UShort {
+        return value.toUShort()
+    }
+
+    fun lift(value: Int): UShort {
+        return value.toUShort()
+    }
+
+    override fun read(buf: ByteBuffer): UShort {
+        return lift(buf.getShort())
+    }
+
+    override fun lower(value: UShort): Short {
+        return value.toShort()
+    }
+
+    override fun allocationSize(value: UShort) = 2UL
+
+    override fun write(value: UShort, buf: ByteBuffer) {
+        buf.putShort(value.toShort())
+    }
 }
 
 /**
@@ -1295,6 +1610,29 @@ public object FfiConverterLong: FfiConverter<Long, Long> {
 
     override fun write(value: Long, buf: ByteBuffer) {
         buf.putLong(value)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterFloat: FfiConverter<Float, Float> {
+    override fun lift(value: Float): Float {
+        return value
+    }
+
+    override fun read(buf: ByteBuffer): Float {
+        return buf.getFloat()
+    }
+
+    override fun lower(value: Float): Float {
+        return value
+    }
+
+    override fun allocationSize(value: Float) = 4UL
+
+    override fun write(value: Float, buf: ByteBuffer) {
+        buf.putFloat(value)
     }
 }
 
@@ -1494,15 +1832,765 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
 
 
 /**
+ * Progress callback for `indexDirWithProgress`：
+ * `fraction ∈ [0,1]` 单调递增（按「已处理目录 / 已处理+待处理」估算）。
+ */
+public interface IndexProgressListener {
+    
+    fun `onProgress`(`directories`: kotlin.ULong, `entries`: kotlin.ULong, `fraction`: kotlin.Float)
+    
+    fun `onFinished`(`total`: kotlin.ULong)
+    
+    companion object
+}
+
+/**
+ * Progress callback for `indexDirWithProgress`：
+ * `fraction ∈ [0,1]` 单调递增（按「已处理目录 / 已处理+待处理」估算）。
+ */
+open class IndexProgressListenerImpl: Disposable, AutoCloseable, IndexProgressListener
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_superfiles_fn_free_indexprogresslistener(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_superfiles_fn_clone_indexprogresslistener(handle, status)
+        }
+    }
+
+    override fun `onProgress`(`directories`: kotlin.ULong, `entries`: kotlin.ULong, `fraction`: kotlin.Float)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_indexprogresslistener_on_progress(
+        it,
+        
+        FfiConverterULong.lower(`directories`),
+        FfiConverterULong.lower(`entries`),
+        FfiConverterFloat.lower(`fraction`),_status)
+}
+    }
+    
+    
+
+    override fun `onFinished`(`total`: kotlin.ULong)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_indexprogresslistener_on_finished(
+        it,
+        
+        FfiConverterULong.lower(`total`),_status)
+}
+    }
+    
+    
+
+    
+
+    
+
+
+    
+    
+    /**
+     * @suppress
+     */
+    companion object
+    
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceIndexProgressListener {
+    internal object `onProgress`: UniffiCallbackInterfaceIndexProgressListenerMethod0 {
+        override fun callback(`uniffiHandle`: Long,`directories`: Long,`entries`: Long,`fraction`: Float,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeIndexProgressListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onProgress`(
+                    FfiConverterULong.lift(`directories`),
+                    FfiConverterULong.lift(`entries`),
+                    FfiConverterFloat.lift(`fraction`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `onFinished`: UniffiCallbackInterfaceIndexProgressListenerMethod1 {
+        override fun callback(`uniffiHandle`: Long,`total`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeIndexProgressListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onFinished`(
+                    FfiConverterULong.lift(`total`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeIndexProgressListener.handleMap.remove(handle)
+        }
+    }
+
+    internal object uniffiClone: UniffiCallbackInterfaceClone {
+        override fun callback(handle: Long): Long {
+            return FfiConverterTypeIndexProgressListener.handleMap.clone(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceIndexProgressListener.UniffiByValue(
+        uniffiFree,
+        uniffiClone,
+        `onProgress`,
+        `onFinished`,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_superfiles_fn_init_callback_vtable_indexprogresslistener(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeIndexProgressListener: FfiConverter<IndexProgressListener, Long> {
+    internal val handleMap = UniffiHandleMap<IndexProgressListener>()
+
+    override fun lower(value: IndexProgressListener): Long {
+        if (value is IndexProgressListenerImpl) {
+             // Rust-implemented object.  Clone the handle and return it
+            return value.uniffiCloneHandle()
+         } else {
+            // Kotlin object, generate a new vtable handle and return that.
+            return handleMap.insert(value)
+         }
+    }
+
+    override fun lift(value: Long): IndexProgressListener {
+        if ((value and 1.toLong()) == 0.toLong()) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return IndexProgressListenerImpl(UniffiWithHandle, value)
+        } else {
+            // Kotlin-generated handle, get the object from the handle map
+            return handleMap.remove(value)
+        }
+    }
+
+    override fun read(buf: ByteBuffer): IndexProgressListener {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: IndexProgressListener) = 8UL
+
+    override fun write(value: IndexProgressListener, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+public interface LocalSendHandleInterface {
+    
+    /**
+     * Force an immediate multicast announcement (UI "refresh").
+     */
+    fun `announce`()
+    
+    /**
+     * Recent protocol errors (interop diagnostics, newest last).
+     */
+    fun `errors`(): List<kotlin.String>
+    
+    fun `info`(): LocalSendInfo
+    
+    fun `isRunning`(): kotlin.Boolean
+    
+    fun `peers`(): List<LocalSendPeer>
+    
+    /**
+     * Manual IP fallback. `fingerprint` is the expected SHA-256 of the peer
+     * certificate; omit it only for first-time discovery.
+     */
+    fun `registerAt`(`ip`: kotlin.String, `port`: kotlin.UShort, `fingerprint`: kotlin.String?): LocalSendPeer
+    
+    fun `send`(`peer`: LocalSendPeer, `ids`: List<kotlin.String>)
+    
+    fun `stop`()
+    
+    companion object
+}
+
+open class LocalSendHandle: Disposable, AutoCloseable, LocalSendHandleInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_superfiles_fn_free_localsendhandle(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_superfiles_fn_clone_localsendhandle(handle, status)
+        }
+    }
+
+    
+    /**
+     * Force an immediate multicast announcement (UI "refresh").
+     */override fun `announce`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_localsendhandle_announce(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Recent protocol errors (interop diagnostics, newest last).
+     */override fun `errors`(): List<kotlin.String> {
+            return FfiConverterSequenceString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_localsendhandle_errors(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `info`(): LocalSendInfo {
+            return FfiConverterTypeLocalSendInfo.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_localsendhandle_info(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `isRunning`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_localsendhandle_is_running(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `peers`(): List<LocalSendPeer> {
+            return FfiConverterSequenceTypeLocalSendPeer.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_localsendhandle_peers(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Manual IP fallback. `fingerprint` is the expected SHA-256 of the peer
+     * certificate; omit it only for first-time discovery.
+     */
+    @Throws(SfException::class)override fun `registerAt`(`ip`: kotlin.String, `port`: kotlin.UShort, `fingerprint`: kotlin.String?): LocalSendPeer {
+            return FfiConverterTypeLocalSendPeer.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_localsendhandle_register_at(
+        it,
+        
+        FfiConverterString.lower(`ip`),
+        FfiConverterUShort.lower(`port`),
+        FfiConverterOptionalString.lower(`fingerprint`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(SfException::class)override fun `send`(`peer`: LocalSendPeer, `ids`: List<kotlin.String>)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_localsendhandle_send(
+        it,
+        
+        FfiConverterTypeLocalSendPeer.lower(`peer`),
+        FfiConverterSequenceString.lower(`ids`),_status)
+}
+    }
+    
+    
+
+    override fun `stop`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_localsendhandle_stop(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+
+    
+
+
+    
+    
+    /**
+     * @suppress
+     */
+    companion object
+    
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLocalSendHandle: FfiConverter<LocalSendHandle, Long> {
+    override fun lower(value: LocalSendHandle): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): LocalSendHandle {
+        return LocalSendHandle(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): LocalSendHandle {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: LocalSendHandle) = 8UL
+
+    override fun write(value: LocalSendHandle, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
  * The single object the app talks to.
  */
 public interface SuperFilesInterface {
+    
+    /**
+     * 收藏（快捷访问标记）：纯标记不改扫描行为。
+     */
+    fun `addFavorite`(`id`: kotlin.String)
     
     fun `cancelTransfer`(`id`: kotlin.String)
     
     fun `capabilities`(`id`: kotlin.String): Capabilities
     
     fun `clearIndex`()
+    
+    /**
+     * Zip `sources` (files or directories, walked recursively) into
+     * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
+     * auto-renamed away with a `-N` suffix). Streams through a bounded
+     * channel so memory stays flat for big archives; `listener` receives
+     * `(done, total)` source-byte progress. Blocking call — invoke it off
+     * the UI thread.
+     */
+    fun `compressZip`(`sources`: List<kotlin.String>, `destDir`: kotlin.String, `name`: kotlin.String, `method`: ZipMethod, `listener`: ZipProgressListener): Entry
     
     fun `createDir`(`parent`: kotlin.String, `name`: kotlin.String): Entry
     
@@ -1518,6 +2606,11 @@ public interface SuperFilesInterface {
      * Android `ParcelFileDescriptor`). Returns bytes written.
      */
     fun `exportToFd`(`id`: kotlin.String, `fd`: kotlin.Int, `offset`: kotlin.ULong): kotlin.ULong
+    
+    /**
+     * 收藏列表（按收藏时间倒序；已删除的路径自动跳过）。
+     */
+    fun `favorites`(`limit`: kotlin.UInt): List<FavoriteEntry>
     
     /**
      * Drop a finished transfer from the registry (UI dismissed it). Also
@@ -1539,9 +2632,29 @@ public interface SuperFilesInterface {
      */
     fun `indexDir`(`id`: kotlin.String): kotlin.UInt
     
+    /**
+     * Like [`index_dir`](Self::index_dir) but (a) reports progress on
+     * `listener`, (b) skips unreadable directories, and (c) is **incremental**:
+     * child directories whose mtime is unchanged since the last scan are not
+     * descended into (their whole subtree is already indexed), and freshly
+     * listed directories get reconciled (vanished entries are pruned from
+     * the index). Blocking call — run it off the UI thread; callbacks arrive
+     * on the calling thread.
+     */
+    fun `indexDirWithProgress`(`id`: kotlin.String, `listener`: IndexProgressListener): kotlin.ULong
+    
     fun `join`(`parent`: kotlin.String, `name`: kotlin.String): kotlin.String
     
     fun `list`(`id`: kotlin.String): List<Entry>
+    
+    /**
+     * 离线缓存列举（M1 离线浏览）：返回索引中 `id` 的直接子项与上次更新
+     * 时间。`entries` 为空且 `listedAtMs` 为 None 表示无缓存可用；UI 在
+     * 实时 `list` 失败时调用，并把结果标注为「过期缓存」。
+     */
+    fun `listCached`(`id`: kotlin.String): CachedListing
+    
+    fun `localSendHandle`(): LocalSendHandle?
     
     /**
      * Mount an SFTP host (password auth for now; key auth lands with the UI).
@@ -1551,7 +2664,7 @@ public interface SuperFilesInterface {
     /**
      * Mount an SMB share (`\\host\share`); returns its root id.
      */
-    fun `mountSmb`(`label`: kotlin.String, `host`: kotlin.String, `share`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String
+    fun `mountSmb`(`label`: kotlin.String, `host`: kotlin.String, `share`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String, `port`: kotlin.UInt): kotlin.String
     
     /**
      * Mount a WebDAV collection; returns its root id (`webdav://host/`).
@@ -1577,7 +2690,19 @@ public interface SuperFilesInterface {
      */
     fun `readBytes`(`id`: kotlin.String, `offset`: kotlin.ULong, `len`: kotlin.UInt): kotlin.ByteArray
     
+    /**
+     * 最近打开列表（按打开时间倒序；已删除的路径自动跳过）。
+     */
+    fun `recentFiles`(`limit`: kotlin.UInt): List<RecentOpen>
+    
+    /**
+     * 记录一次「打开」（首页「最近打开」数据源；需要索引）。
+     */
+    fun `recordOpen`(`id`: kotlin.String)
+    
     fun `remove`(`id`: kotlin.String, `recursive`: kotlin.Boolean)
+    
+    fun `removeFavorite`(`id`: kotlin.String)
     
     fun `rename`(`id`: kotlin.String, `newName`: kotlin.String): Entry
     
@@ -1606,6 +2731,11 @@ public interface SuperFilesInterface {
     fun `search`(`query`: kotlin.String, `limit`: kotlin.UInt): List<Entry>
     
     /**
+     * 枚举 SMB 服务器上可访问的共享名（UI「列出共享」用；需要可达 + 凭据有效）。
+     */
+    fun `smbListShares`(`host`: kotlin.String, `port`: kotlin.UInt, `username`: kotlin.String, `password`: kotlin.String): List<kotlin.String>
+    
+    /**
      * Start a background copy. Returns a transfer id for polling/cancelling.
      *
      * When the core was opened with an index, the copy is journaled: a
@@ -1614,7 +2744,37 @@ public interface SuperFilesInterface {
      */
     fun `startCopy`(`sources`: List<kotlin.String>, `destDir`: kotlin.String, `conflict`: ConflictPolicy): kotlin.String
     
+    /**
+     * Start the LocalSend-compatible HTTPS receiver + multicast discovery.
+     * Stops any previous instance first.
+     */
+    fun `startLocalSend`(`options`: LocalSendOptions): LocalSendHandle
+    
+    /**
+     * 移动：复制成功后由引擎删除源（并把 `is_move` 写进 transfers 表，
+     * 进程被杀后恢复的任务仍然会完成删除）。
+     */
+    fun `startMove`(`sources`: List<kotlin.String>, `destDir`: kotlin.String, `conflict`: ConflictPolicy): kotlin.String
+    
+    /**
+     * 就近分享（ADR 0005）：把选中的文件经局域网 HTTP 暴露为「链接 + 二维码」
+     * 可下载的临时站点；浏览器免安装直接收，App 走 `manifest.json` 批量收取。
+     *
+     * 仅限文件——目录请 `compressZip` 成包再分享。清单在启动时固定
+     * （名称/大小/mime），内容仍实时读后端。再次调用会停掉上一次分享。
+     */
+    fun `startShare`(`ids`: List<kotlin.String>): ShareInfo
+    
+    fun `startTransfer`(`sources`: List<kotlin.String>, `destDir`: kotlin.String, `conflict`: ConflictPolicy, `isMove`: kotlin.Boolean): kotlin.String
+    
     fun `stat`(`id`: kotlin.String): Entry
+    
+    fun `stopLocalSend`()
+    
+    /**
+     * 关闭当前分享；返回是否有进行中的分享被关闭。
+     */
+    fun `stopShare`(): kotlin.Boolean
     
     /**
      * Loopback HTTP(+Range) URL for any backend file with `can_seek`.
@@ -1743,6 +2903,23 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
         }
     }
 
+    
+    /**
+     * 收藏（快捷访问标记）：纯标记不改扫描行为。
+     */
+    @Throws(SfException::class)override fun `addFavorite`(`id`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_add_favorite(
+        it,
+        
+        FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
     override fun `cancelTransfer`(`id`: kotlin.String)
         = 
     callWithHandle {
@@ -1782,6 +2959,33 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
 }
     }
     
+    
+
+    
+    /**
+     * Zip `sources` (files or directories, walked recursively) into
+     * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
+     * auto-renamed away with a `-N` suffix). Streams through a bounded
+     * channel so memory stays flat for big archives; `listener` receives
+     * `(done, total)` source-byte progress. Blocking call — invoke it off
+     * the UI thread.
+     */
+    @Throws(SfException::class)override fun `compressZip`(`sources`: List<kotlin.String>, `destDir`: kotlin.String, `name`: kotlin.String, `method`: ZipMethod, `listener`: ZipProgressListener): Entry {
+            return FfiConverterTypeEntry.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_compress_zip(
+        it,
+        
+        FfiConverterSequenceString.lower(`sources`),
+        FfiConverterString.lower(`destDir`),
+        FfiConverterString.lower(`name`),
+        FfiConverterTypeZipMethod.lower(`method`),
+        FfiConverterTypeZipProgressListener.lower(`listener`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -1848,6 +3052,24 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
         FfiConverterString.lower(`id`),
         FfiConverterInt.lower(`fd`),
         FfiConverterULong.lower(`offset`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * 收藏列表（按收藏时间倒序；已删除的路径自动跳过）。
+     */
+    @Throws(SfException::class)override fun `favorites`(`limit`: kotlin.UInt): List<FavoriteEntry> {
+            return FfiConverterSequenceTypeFavoriteEntry.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_favorites(
+        it,
+        
+        FfiConverterUInt.lower(`limit`),_status)
 }
     }
     )
@@ -1924,6 +3146,31 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
     }
     
 
+    
+    /**
+     * Like [`index_dir`](Self::index_dir) but (a) reports progress on
+     * `listener`, (b) skips unreadable directories, and (c) is **incremental**:
+     * child directories whose mtime is unchanged since the last scan are not
+     * descended into (their whole subtree is already indexed), and freshly
+     * listed directories get reconciled (vanished entries are pruned from
+     * the index). Blocking call — run it off the UI thread; callbacks arrive
+     * on the calling thread.
+     */
+    @Throws(SfException::class)override fun `indexDirWithProgress`(`id`: kotlin.String, `listener`: IndexProgressListener): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_index_dir_with_progress(
+        it,
+        
+        FfiConverterString.lower(`id`),
+        FfiConverterTypeIndexProgressListener.lower(`listener`),_status)
+}
+    }
+    )
+    }
+    
+
     override fun `join`(`parent`: kotlin.String, `name`: kotlin.String): kotlin.String {
             return FfiConverterString.lift(
     callWithHandle {
@@ -1956,6 +3203,38 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
 
     
     /**
+     * 离线缓存列举（M1 离线浏览）：返回索引中 `id` 的直接子项与上次更新
+     * 时间。`entries` 为空且 `listedAtMs` 为 None 表示无缓存可用；UI 在
+     * 实时 `list` 失败时调用，并把结果标注为「过期缓存」。
+     */override fun `listCached`(`id`: kotlin.String): CachedListing {
+            return FfiConverterTypeCachedListing.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_list_cached(
+        it,
+        
+        FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `localSendHandle`(): LocalSendHandle? {
+            return FfiConverterOptionalTypeLocalSendHandle.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_local_send_handle(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Mount an SFTP host (password auth for now; key auth lands with the UI).
      */
     @Throws(SfException::class)override fun `mountSftp`(`label`: kotlin.String, `host`: kotlin.String, `port`: kotlin.UInt, `username`: kotlin.String, `password`: kotlin.String): kotlin.String {
@@ -1980,7 +3259,7 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
     /**
      * Mount an SMB share (`\\host\share`); returns its root id.
      */
-    @Throws(SfException::class)override fun `mountSmb`(`label`: kotlin.String, `host`: kotlin.String, `share`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String): kotlin.String {
+    @Throws(SfException::class)override fun `mountSmb`(`label`: kotlin.String, `host`: kotlin.String, `share`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String, `port`: kotlin.UInt): kotlin.String {
             return FfiConverterString.lift(
     callWithHandle {
     uniffiRustCallWithError(SfException) { _status ->
@@ -1991,7 +3270,8 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
         FfiConverterString.lower(`host`),
         FfiConverterString.lower(`share`),
         FfiConverterString.lower(`username`),
-        FfiConverterString.lower(`password`),_status)
+        FfiConverterString.lower(`password`),
+        FfiConverterUInt.lower(`port`),_status)
 }
     }
     )
@@ -2077,6 +3357,41 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
     
 
     
+    /**
+     * 最近打开列表（按打开时间倒序；已删除的路径自动跳过）。
+     */
+    @Throws(SfException::class)override fun `recentFiles`(`limit`: kotlin.UInt): List<RecentOpen> {
+            return FfiConverterSequenceTypeRecentOpen.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_recent_files(
+        it,
+        
+        FfiConverterUInt.lower(`limit`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * 记录一次「打开」（首页「最近打开」数据源；需要索引）。
+     */
+    @Throws(SfException::class)override fun `recordOpen`(`id`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_record_open(
+        it,
+        
+        FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
     @Throws(SfException::class)override fun `remove`(`id`: kotlin.String, `recursive`: kotlin.Boolean)
         = 
     callWithHandle {
@@ -2086,6 +3401,20 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
         
         FfiConverterString.lower(`id`),
         FfiConverterBoolean.lower(`recursive`),_status)
+}
+    }
+    
+    
+
+    
+    @Throws(SfException::class)override fun `removeFavorite`(`id`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_remove_favorite(
+        it,
+        
+        FfiConverterString.lower(`id`),_status)
 }
     }
     
@@ -2170,6 +3499,27 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
 
     
     /**
+     * 枚举 SMB 服务器上可访问的共享名（UI「列出共享」用；需要可达 + 凭据有效）。
+     */
+    @Throws(SfException::class)override fun `smbListShares`(`host`: kotlin.String, `port`: kotlin.UInt, `username`: kotlin.String, `password`: kotlin.String): List<kotlin.String> {
+            return FfiConverterSequenceString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_smb_list_shares(
+        it,
+        
+        FfiConverterString.lower(`host`),
+        FfiConverterUInt.lower(`port`),
+        FfiConverterString.lower(`username`),
+        FfiConverterString.lower(`password`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Start a background copy. Returns a transfer id for polling/cancelling.
      *
      * When the core was opened with an index, the copy is journaled: a
@@ -2193,6 +3543,86 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
     
 
     
+    /**
+     * Start the LocalSend-compatible HTTPS receiver + multicast discovery.
+     * Stops any previous instance first.
+     */
+    @Throws(SfException::class)override fun `startLocalSend`(`options`: LocalSendOptions): LocalSendHandle {
+            return FfiConverterTypeLocalSendHandle.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_start_local_send(
+        it,
+        
+        FfiConverterTypeLocalSendOptions.lower(`options`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * 移动：复制成功后由引擎删除源（并把 `is_move` 写进 transfers 表，
+     * 进程被杀后恢复的任务仍然会完成删除）。
+     */
+    @Throws(SfException::class)override fun `startMove`(`sources`: List<kotlin.String>, `destDir`: kotlin.String, `conflict`: ConflictPolicy): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_start_move(
+        it,
+        
+        FfiConverterSequenceString.lower(`sources`),
+        FfiConverterString.lower(`destDir`),
+        FfiConverterTypeConflictPolicy.lower(`conflict`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * 就近分享（ADR 0005）：把选中的文件经局域网 HTTP 暴露为「链接 + 二维码」
+     * 可下载的临时站点；浏览器免安装直接收，App 走 `manifest.json` 批量收取。
+     *
+     * 仅限文件——目录请 `compressZip` 成包再分享。清单在启动时固定
+     * （名称/大小/mime），内容仍实时读后端。再次调用会停掉上一次分享。
+     */
+    @Throws(SfException::class)override fun `startShare`(`ids`: List<kotlin.String>): ShareInfo {
+            return FfiConverterTypeShareInfo.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_start_share(
+        it,
+        
+        FfiConverterSequenceString.lower(`ids`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(SfException::class)override fun `startTransfer`(`sources`: List<kotlin.String>, `destDir`: kotlin.String, `conflict`: ConflictPolicy, `isMove`: kotlin.Boolean): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_start_transfer(
+        it,
+        
+        FfiConverterSequenceString.lower(`sources`),
+        FfiConverterString.lower(`destDir`),
+        FfiConverterTypeConflictPolicy.lower(`conflict`),
+        FfiConverterBoolean.lower(`isMove`),_status)
+}
+    }
+    )
+    }
+    
+
+    
     @Throws(SfException::class)override fun `stat`(`id`: kotlin.String): Entry {
             return FfiConverterTypeEntry.lift(
     callWithHandle {
@@ -2201,6 +3631,34 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
         it,
         
         FfiConverterString.lower(`id`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `stopLocalSend`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_stop_local_send(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * 关闭当前分享；返回是否有进行中的分享被关闭。
+     */override fun `stopShare`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_stop_share(
+        it,
+        _status)
 }
     }
     )
@@ -2353,6 +3811,370 @@ public object FfiConverterTypeSuperFiles: FfiConverter<SuperFiles, Long> {
 
     override fun write(value: SuperFiles, buf: ByteBuffer) {
         buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * Progress callback for `compressZip`: reports `(done, total)` source bytes.
+ */
+public interface ZipProgressListener {
+    
+    fun `onProgress`(`done`: kotlin.ULong, `total`: kotlin.ULong)
+    
+    companion object
+}
+
+/**
+ * Progress callback for `compressZip`: reports `(done, total)` source bytes.
+ */
+open class ZipProgressListenerImpl: Disposable, AutoCloseable, ZipProgressListener
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_superfiles_fn_free_zipprogresslistener(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_superfiles_fn_clone_zipprogresslistener(handle, status)
+        }
+    }
+
+    override fun `onProgress`(`done`: kotlin.ULong, `total`: kotlin.ULong)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_zipprogresslistener_on_progress(
+        it,
+        
+        FfiConverterULong.lower(`done`),
+        FfiConverterULong.lower(`total`),_status)
+}
+    }
+    
+    
+
+    
+
+    
+
+
+    
+    
+    /**
+     * @suppress
+     */
+    companion object
+    
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceZipProgressListener {
+    internal object `onProgress`: UniffiCallbackInterfaceZipProgressListenerMethod0 {
+        override fun callback(`uniffiHandle`: Long,`done`: Long,`total`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeZipProgressListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onProgress`(
+                    FfiConverterULong.lift(`done`),
+                    FfiConverterULong.lift(`total`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeZipProgressListener.handleMap.remove(handle)
+        }
+    }
+
+    internal object uniffiClone: UniffiCallbackInterfaceClone {
+        override fun callback(handle: Long): Long {
+            return FfiConverterTypeZipProgressListener.handleMap.clone(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceZipProgressListener.UniffiByValue(
+        uniffiFree,
+        uniffiClone,
+        `onProgress`,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_superfiles_fn_init_callback_vtable_zipprogresslistener(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZipProgressListener: FfiConverter<ZipProgressListener, Long> {
+    internal val handleMap = UniffiHandleMap<ZipProgressListener>()
+
+    override fun lower(value: ZipProgressListener): Long {
+        if (value is ZipProgressListenerImpl) {
+             // Rust-implemented object.  Clone the handle and return it
+            return value.uniffiCloneHandle()
+         } else {
+            // Kotlin object, generate a new vtable handle and return that.
+            return handleMap.insert(value)
+         }
+    }
+
+    override fun lift(value: Long): ZipProgressListener {
+        if ((value and 1.toLong()) == 0.toLong()) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return ZipProgressListenerImpl(UniffiWithHandle, value)
+        } else {
+            // Kotlin-generated handle, get the object from the handle map
+            return handleMap.remove(value)
+        }
+    }
+
+    override fun read(buf: ByteBuffer): ZipProgressListener {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: ZipProgressListener) = 8UL
+
+    override fun write(value: ZipProgressListener, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+
+/**
+ * A directory listing served from the local cache (M1 离线浏览)：
+ * 实时 `list` 失败（断网/服务不可达）时由 UI 回退展示，并附过期标记。
+ */
+data class CachedListing (
+    var `entries`: List<Entry>
+    , 
+    /**
+     * 上次成功列举时间（epoch ms；None = 该目录从未缓存）。
+     */
+    var `listedAtMs`: kotlin.Long?
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCachedListing: FfiConverterRustBuffer<CachedListing> {
+    override fun read(buf: ByteBuffer): CachedListing {
+        return CachedListing(
+            FfiConverterSequenceTypeEntry.read(buf),
+            FfiConverterOptionalLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CachedListing) = (
+            FfiConverterSequenceTypeEntry.allocationSize(value.`entries`) +
+            FfiConverterOptionalLong.allocationSize(value.`listedAtMs`)
+    )
+
+    override fun write(value: CachedListing, buf: ByteBuffer) {
+            FfiConverterSequenceTypeEntry.write(value.`entries`, buf)
+            FfiConverterOptionalLong.write(value.`listedAtMs`, buf)
     }
 }
 
@@ -2516,6 +4338,226 @@ public object FfiConverterTypeEntry: FfiConverterRustBuffer<Entry> {
 
 
 /**
+ * One favorited entry, resolved from the index + vfs.
+ */
+data class FavoriteEntry (
+    var `entry`: Entry
+    , 
+    var `addedMs`: kotlin.ULong
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFavoriteEntry: FfiConverterRustBuffer<FavoriteEntry> {
+    override fun read(buf: ByteBuffer): FavoriteEntry {
+        return FavoriteEntry(
+            FfiConverterTypeEntry.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FavoriteEntry) = (
+            FfiConverterTypeEntry.allocationSize(value.`entry`) +
+            FfiConverterULong.allocationSize(value.`addedMs`)
+    )
+
+    override fun write(value: FavoriteEntry, buf: ByteBuffer) {
+            FfiConverterTypeEntry.write(value.`entry`, buf)
+            FfiConverterULong.write(value.`addedMs`, buf)
+    }
+}
+
+
+
+data class LocalSendInfo (
+    var `alias`: kotlin.String
+    , 
+    var `port`: kotlin.UShort
+    , 
+    var `fingerprint`: kotlin.String
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLocalSendInfo: FfiConverterRustBuffer<LocalSendInfo> {
+    override fun read(buf: ByteBuffer): LocalSendInfo {
+        return LocalSendInfo(
+            FfiConverterString.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LocalSendInfo) = (
+            FfiConverterString.allocationSize(value.`alias`) +
+            FfiConverterUShort.allocationSize(value.`port`) +
+            FfiConverterString.allocationSize(value.`fingerprint`)
+    )
+
+    override fun write(value: LocalSendInfo, buf: ByteBuffer) {
+            FfiConverterString.write(value.`alias`, buf)
+            FfiConverterUShort.write(value.`port`, buf)
+            FfiConverterString.write(value.`fingerprint`, buf)
+    }
+}
+
+
+
+data class LocalSendOptions (
+    var `alias`: kotlin.String
+    , 
+    var `deviceModel`: kotlin.String
+    , 
+    var `port`: kotlin.UShort
+    , 
+    /**
+     * Persistent certificate/key directory (usually app filesDir).
+     */
+    var `storeDir`: kotlin.String
+    , 
+    /**
+     * VFS id of the receive directory.
+     */
+    var `destDir`: kotlin.String
+    , 
+    var `pin`: kotlin.String?
+    , 
+    var `enableDiscovery`: kotlin.Boolean
+    , 
+    /**
+     * Security: auto-stop after this many seconds without transfer activity
+     * (0 = never).
+     */
+    var `idleTimeoutSecs`: kotlin.ULong
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLocalSendOptions: FfiConverterRustBuffer<LocalSendOptions> {
+    override fun read(buf: ByteBuffer): LocalSendOptions {
+        return LocalSendOptions(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LocalSendOptions) = (
+            FfiConverterString.allocationSize(value.`alias`) +
+            FfiConverterString.allocationSize(value.`deviceModel`) +
+            FfiConverterUShort.allocationSize(value.`port`) +
+            FfiConverterString.allocationSize(value.`storeDir`) +
+            FfiConverterString.allocationSize(value.`destDir`) +
+            FfiConverterOptionalString.allocationSize(value.`pin`) +
+            FfiConverterBoolean.allocationSize(value.`enableDiscovery`) +
+            FfiConverterULong.allocationSize(value.`idleTimeoutSecs`)
+    )
+
+    override fun write(value: LocalSendOptions, buf: ByteBuffer) {
+            FfiConverterString.write(value.`alias`, buf)
+            FfiConverterString.write(value.`deviceModel`, buf)
+            FfiConverterUShort.write(value.`port`, buf)
+            FfiConverterString.write(value.`storeDir`, buf)
+            FfiConverterString.write(value.`destDir`, buf)
+            FfiConverterOptionalString.write(value.`pin`, buf)
+            FfiConverterBoolean.write(value.`enableDiscovery`, buf)
+            FfiConverterULong.write(value.`idleTimeoutSecs`, buf)
+    }
+}
+
+
+
+data class LocalSendPeer (
+    var `alias`: kotlin.String
+    , 
+    var `ip`: kotlin.String
+    , 
+    var `port`: kotlin.UShort
+    , 
+    var `fingerprint`: kotlin.String
+    , 
+    var `deviceType`: kotlin.String
+    , 
+    var `lastSeenMs`: kotlin.ULong
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLocalSendPeer: FfiConverterRustBuffer<LocalSendPeer> {
+    override fun read(buf: ByteBuffer): LocalSendPeer {
+        return LocalSendPeer(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LocalSendPeer) = (
+            FfiConverterString.allocationSize(value.`alias`) +
+            FfiConverterString.allocationSize(value.`ip`) +
+            FfiConverterUShort.allocationSize(value.`port`) +
+            FfiConverterString.allocationSize(value.`fingerprint`) +
+            FfiConverterString.allocationSize(value.`deviceType`) +
+            FfiConverterULong.allocationSize(value.`lastSeenMs`)
+    )
+
+    override fun write(value: LocalSendPeer, buf: ByteBuffer) {
+            FfiConverterString.write(value.`alias`, buf)
+            FfiConverterString.write(value.`ip`, buf)
+            FfiConverterUShort.write(value.`port`, buf)
+            FfiConverterString.write(value.`fingerprint`, buf)
+            FfiConverterString.write(value.`deviceType`, buf)
+            FfiConverterULong.write(value.`lastSeenMs`, buf)
+    }
+}
+
+
+
+/**
  * One mounted remote connection, as listed by the connection UI.
  */
 data class MountInfo (
@@ -2573,6 +4615,8 @@ data class PendingTransfer (
     , 
     var `destDir`: kotlin.String
     , 
+    var `isMove`: kotlin.Boolean
+    , 
     var `filesTotal`: kotlin.ULong
     , 
     var `filesDone`: kotlin.ULong
@@ -2599,6 +4643,7 @@ public object FfiConverterTypePendingTransfer: FfiConverterRustBuffer<PendingTra
             FfiConverterString.read(buf),
             FfiConverterSequenceString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
             FfiConverterULong.read(buf),
             FfiConverterULong.read(buf),
             FfiConverterULong.read(buf),
@@ -2610,6 +4655,7 @@ public object FfiConverterTypePendingTransfer: FfiConverterRustBuffer<PendingTra
             FfiConverterString.allocationSize(value.`id`) +
             FfiConverterSequenceString.allocationSize(value.`sources`) +
             FfiConverterString.allocationSize(value.`destDir`) +
+            FfiConverterBoolean.allocationSize(value.`isMove`) +
             FfiConverterULong.allocationSize(value.`filesTotal`) +
             FfiConverterULong.allocationSize(value.`filesDone`) +
             FfiConverterULong.allocationSize(value.`bytesTotal`) +
@@ -2620,10 +4666,101 @@ public object FfiConverterTypePendingTransfer: FfiConverterRustBuffer<PendingTra
             FfiConverterString.write(value.`id`, buf)
             FfiConverterSequenceString.write(value.`sources`, buf)
             FfiConverterString.write(value.`destDir`, buf)
+            FfiConverterBoolean.write(value.`isMove`, buf)
             FfiConverterULong.write(value.`filesTotal`, buf)
             FfiConverterULong.write(value.`filesDone`, buf)
             FfiConverterULong.write(value.`bytesTotal`, buf)
             FfiConverterULong.write(value.`bytesDone`, buf)
+    }
+}
+
+
+
+/**
+ * One recently opened file, resolved from the index + vfs.
+ */
+data class RecentOpen (
+    var `entry`: Entry
+    , 
+    var `openedMs`: kotlin.ULong
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRecentOpen: FfiConverterRustBuffer<RecentOpen> {
+    override fun read(buf: ByteBuffer): RecentOpen {
+        return RecentOpen(
+            FfiConverterTypeEntry.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: RecentOpen) = (
+            FfiConverterTypeEntry.allocationSize(value.`entry`) +
+            FfiConverterULong.allocationSize(value.`openedMs`)
+    )
+
+    override fun write(value: RecentOpen, buf: ByteBuffer) {
+            FfiConverterTypeEntry.write(value.`entry`, buf)
+            FfiConverterULong.write(value.`openedMs`, buf)
+    }
+}
+
+
+
+/**
+ * 一次进行中「就近分享」的信息（ADR 0005）。
+ */
+data class ShareInfo (
+    /**
+     * 二维码/链接内容：`http://<lan-ip>:port/<token>/`。
+     */
+    var `url`: kotlin.String
+    , 
+    var `port`: kotlin.UShort
+    , 
+    var `fileCount`: kotlin.UInt
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeShareInfo: FfiConverterRustBuffer<ShareInfo> {
+    override fun read(buf: ByteBuffer): ShareInfo {
+        return ShareInfo(
+            FfiConverterString.read(buf),
+            FfiConverterUShort.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ShareInfo) = (
+            FfiConverterString.allocationSize(value.`url`) +
+            FfiConverterUShort.allocationSize(value.`port`) +
+            FfiConverterUInt.allocationSize(value.`fileCount`)
+    )
+
+    override fun write(value: ShareInfo, buf: ByteBuffer) {
+            FfiConverterString.write(value.`url`, buf)
+            FfiConverterUShort.write(value.`port`, buf)
+            FfiConverterUInt.write(value.`fileCount`, buf)
     }
 }
 
@@ -3029,6 +5166,49 @@ public object FfiConverterTypeTransferState: FfiConverterRustBuffer<TransferStat
 
 
 
+/**
+ * Archive method for `compressZip`.
+ */
+
+enum class ZipMethod {
+    
+    /**
+     * 仅打包不压缩（最快，体积不变）。
+     */
+    STORE,
+    /**
+     * Deflate 压缩（默认）。
+     */
+    DEFLATE;
+
+    
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZipMethod: FfiConverterRustBuffer<ZipMethod> {
+    override fun read(buf: ByteBuffer) = try {
+        ZipMethod.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: ZipMethod) = 4UL
+
+    override fun write(value: ZipMethod, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
 
 /**
  * @suppress
@@ -3087,6 +5267,38 @@ public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?>
         } else {
             buf.put(1)
             FfiConverterString.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeLocalSendHandle: FfiConverterRustBuffer<LocalSendHandle?> {
+    override fun read(buf: ByteBuffer): LocalSendHandle? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeLocalSendHandle.read(buf)
+    }
+
+    override fun allocationSize(value: LocalSendHandle?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeLocalSendHandle.allocationSize(value)
+        }
+    }
+
+    override fun write(value: LocalSendHandle?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeLocalSendHandle.write(value, buf)
         }
     }
 }
@@ -3185,6 +5397,62 @@ public object FfiConverterSequenceTypeEntry: FfiConverterRustBuffer<List<Entry>>
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeFavoriteEntry: FfiConverterRustBuffer<List<FavoriteEntry>> {
+    override fun read(buf: ByteBuffer): List<FavoriteEntry> {
+        val len = buf.getInt()
+        return List<FavoriteEntry>(len) {
+            FfiConverterTypeFavoriteEntry.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<FavoriteEntry>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeFavoriteEntry.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<FavoriteEntry>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeFavoriteEntry.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeLocalSendPeer: FfiConverterRustBuffer<List<LocalSendPeer>> {
+    override fun read(buf: ByteBuffer): List<LocalSendPeer> {
+        val len = buf.getInt()
+        return List<LocalSendPeer>(len) {
+            FfiConverterTypeLocalSendPeer.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<LocalSendPeer>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeLocalSendPeer.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<LocalSendPeer>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeLocalSendPeer.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeMountInfo: FfiConverterRustBuffer<List<MountInfo>> {
     override fun read(buf: ByteBuffer): List<MountInfo> {
         val len = buf.getInt()
@@ -3231,6 +5499,34 @@ public object FfiConverterSequenceTypePendingTransfer: FfiConverterRustBuffer<Li
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypePendingTransfer.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeRecentOpen: FfiConverterRustBuffer<List<RecentOpen>> {
+    override fun read(buf: ByteBuffer): List<RecentOpen> {
+        val len = buf.getInt()
+        return List<RecentOpen>(len) {
+            FfiConverterTypeRecentOpen.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<RecentOpen>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeRecentOpen.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<RecentOpen>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeRecentOpen.write(it, buf)
         }
     }
 }

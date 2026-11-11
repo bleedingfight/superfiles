@@ -243,6 +243,121 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureRes
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_INDEX_PROGRESS_LISTENER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_INDEX_PROGRESS_LISTENER_METHOD0
+typedef void (*UniffiCallbackInterfaceIndexProgressListenerMethod0)(uint64_t, uint64_t, uint64_t, float, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_INDEX_PROGRESS_LISTENER_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_INDEX_PROGRESS_LISTENER_METHOD1
+typedef void (*UniffiCallbackInterfaceIndexProgressListenerMethod1)(uint64_t, uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_ZIP_PROGRESS_LISTENER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_ZIP_PROGRESS_LISTENER_METHOD0
+typedef void (*UniffiCallbackInterfaceZipProgressListenerMethod0)(uint64_t, uint64_t, uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_INDEX_PROGRESS_LISTENER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_INDEX_PROGRESS_LISTENER
+typedef struct UniffiVTableCallbackInterfaceIndexProgressListener {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceIndexProgressListenerMethod0 _Nonnull onProgress;
+    UniffiCallbackInterfaceIndexProgressListenerMethod1 _Nonnull onFinished;
+} UniffiVTableCallbackInterfaceIndexProgressListener;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_ZIP_PROGRESS_LISTENER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_ZIP_PROGRESS_LISTENER
+typedef struct UniffiVTableCallbackInterfaceZipProgressListener {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceZipProgressListenerMethod0 _Nonnull onProgress;
+} UniffiVTableCallbackInterfaceZipProgressListener;
+
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_CLONE_INDEXPROGRESSLISTENER
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_CLONE_INDEXPROGRESSLISTENER
+uint64_t uniffi_superfiles_fn_clone_indexprogresslistener(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_FREE_INDEXPROGRESSLISTENER
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_FREE_INDEXPROGRESSLISTENER
+void uniffi_superfiles_fn_free_indexprogresslistener(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_INIT_CALLBACK_VTABLE_INDEXPROGRESSLISTENER
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_INIT_CALLBACK_VTABLE_INDEXPROGRESSLISTENER
+void uniffi_superfiles_fn_init_callback_vtable_indexprogresslistener(const UniffiVTableCallbackInterfaceIndexProgressListener* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_INDEXPROGRESSLISTENER_ON_PROGRESS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_INDEXPROGRESSLISTENER_ON_PROGRESS
+void uniffi_superfiles_fn_method_indexprogresslistener_on_progress(uint64_t ptr, uint64_t directories, uint64_t entries, float fraction, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_INDEXPROGRESSLISTENER_ON_FINISHED
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_INDEXPROGRESSLISTENER_ON_FINISHED
+void uniffi_superfiles_fn_method_indexprogresslistener_on_finished(uint64_t ptr, uint64_t total, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_CLONE_LOCALSENDHANDLE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_CLONE_LOCALSENDHANDLE
+uint64_t uniffi_superfiles_fn_clone_localsendhandle(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_FREE_LOCALSENDHANDLE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_FREE_LOCALSENDHANDLE
+void uniffi_superfiles_fn_free_localsendhandle(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_ANNOUNCE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_ANNOUNCE
+void uniffi_superfiles_fn_method_localsendhandle_announce(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_ERRORS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_ERRORS
+RustBuffer uniffi_superfiles_fn_method_localsendhandle_errors(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_INFO
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_INFO
+RustBuffer uniffi_superfiles_fn_method_localsendhandle_info(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_IS_RUNNING
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_IS_RUNNING
+int8_t uniffi_superfiles_fn_method_localsendhandle_is_running(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_PEERS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_PEERS
+RustBuffer uniffi_superfiles_fn_method_localsendhandle_peers(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_REGISTER_AT
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_REGISTER_AT
+RustBuffer uniffi_superfiles_fn_method_localsendhandle_register_at(uint64_t ptr, RustBuffer ip, uint16_t port, RustBuffer fingerprint, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_SEND
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_SEND
+void uniffi_superfiles_fn_method_localsendhandle_send(uint64_t ptr, RustBuffer peer, RustBuffer ids, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_STOP
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_LOCALSENDHANDLE_STOP
+void uniffi_superfiles_fn_method_localsendhandle_stop(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_CLONE_SUPERFILES
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_CLONE_SUPERFILES
 uint64_t uniffi_superfiles_fn_clone_superfiles(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -258,6 +373,11 @@ void uniffi_superfiles_fn_free_superfiles(uint64_t handle, RustCallStatus *_Nonn
 uint64_t uniffi_superfiles_fn_constructor_superfiles_open(RustBuffer local_root, RustBuffer index_path, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_ADD_FAVORITE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_ADD_FAVORITE
+void uniffi_superfiles_fn_method_superfiles_add_favorite(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_CANCEL_TRANSFER
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_CANCEL_TRANSFER
 void uniffi_superfiles_fn_method_superfiles_cancel_transfer(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
@@ -271,6 +391,11 @@ RustBuffer uniffi_superfiles_fn_method_superfiles_capabilities(uint64_t ptr, Rus
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_CLEAR_INDEX
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_CLEAR_INDEX
 void uniffi_superfiles_fn_method_superfiles_clear_index(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_COMPRESS_ZIP
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_COMPRESS_ZIP
+RustBuffer uniffi_superfiles_fn_method_superfiles_compress_zip(uint64_t ptr, RustBuffer sources, RustBuffer dest_dir, RustBuffer name, RustBuffer method, uint64_t listener, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_CREATE_DIR
@@ -293,6 +418,11 @@ RustBuffer uniffi_superfiles_fn_method_superfiles_display_path(uint64_t ptr, Rus
 uint64_t uniffi_superfiles_fn_method_superfiles_export_to_fd(uint64_t ptr, RustBuffer id, int32_t fd, uint64_t offset, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_FAVORITES
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_FAVORITES
+RustBuffer uniffi_superfiles_fn_method_superfiles_favorites(uint64_t ptr, uint32_t limit, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_FORGET_TRANSFER
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_FORGET_TRANSFER
 void uniffi_superfiles_fn_method_superfiles_forget_transfer(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
@@ -313,6 +443,11 @@ uint64_t uniffi_superfiles_fn_method_superfiles_index_count(uint64_t ptr, RustCa
 uint32_t uniffi_superfiles_fn_method_superfiles_index_dir(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_INDEX_DIR_WITH_PROGRESS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_INDEX_DIR_WITH_PROGRESS
+uint64_t uniffi_superfiles_fn_method_superfiles_index_dir_with_progress(uint64_t ptr, RustBuffer id, uint64_t listener, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_JOIN
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_JOIN
 RustBuffer uniffi_superfiles_fn_method_superfiles_join(uint64_t ptr, RustBuffer parent, RustBuffer name, RustCallStatus *_Nonnull out_status
@@ -323,6 +458,16 @@ RustBuffer uniffi_superfiles_fn_method_superfiles_join(uint64_t ptr, RustBuffer 
 RustBuffer uniffi_superfiles_fn_method_superfiles_list(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_LIST_CACHED
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_LIST_CACHED
+RustBuffer uniffi_superfiles_fn_method_superfiles_list_cached(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_LOCAL_SEND_HANDLE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_LOCAL_SEND_HANDLE
+RustBuffer uniffi_superfiles_fn_method_superfiles_local_send_handle(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_MOUNT_SFTP
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_MOUNT_SFTP
 RustBuffer uniffi_superfiles_fn_method_superfiles_mount_sftp(uint64_t ptr, RustBuffer label, RustBuffer host, uint32_t port, RustBuffer username, RustBuffer password, RustCallStatus *_Nonnull out_status
@@ -330,7 +475,7 @@ RustBuffer uniffi_superfiles_fn_method_superfiles_mount_sftp(uint64_t ptr, RustB
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_MOUNT_SMB
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_MOUNT_SMB
-RustBuffer uniffi_superfiles_fn_method_superfiles_mount_smb(uint64_t ptr, RustBuffer label, RustBuffer host, RustBuffer share, RustBuffer username, RustBuffer password, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_superfiles_fn_method_superfiles_mount_smb(uint64_t ptr, RustBuffer label, RustBuffer host, RustBuffer share, RustBuffer username, RustBuffer password, uint32_t port, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_MOUNT_WEBDAV
@@ -353,9 +498,24 @@ RustBuffer uniffi_superfiles_fn_method_superfiles_pending_transfers(uint64_t ptr
 RustBuffer uniffi_superfiles_fn_method_superfiles_read_bytes(uint64_t ptr, RustBuffer id, uint64_t offset, uint32_t len, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_RECENT_FILES
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_RECENT_FILES
+RustBuffer uniffi_superfiles_fn_method_superfiles_recent_files(uint64_t ptr, uint32_t limit, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_RECORD_OPEN
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_RECORD_OPEN
+void uniffi_superfiles_fn_method_superfiles_record_open(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_REMOVE
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_REMOVE
 void uniffi_superfiles_fn_method_superfiles_remove(uint64_t ptr, RustBuffer id, int8_t recursive, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_REMOVE_FAVORITE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_REMOVE_FAVORITE
+void uniffi_superfiles_fn_method_superfiles_remove_favorite(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_RENAME
@@ -378,14 +538,49 @@ RustBuffer uniffi_superfiles_fn_method_superfiles_root_id(uint64_t ptr, RustCall
 RustBuffer uniffi_superfiles_fn_method_superfiles_search(uint64_t ptr, RustBuffer query, uint32_t limit, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_SMB_LIST_SHARES
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_SMB_LIST_SHARES
+RustBuffer uniffi_superfiles_fn_method_superfiles_smb_list_shares(uint64_t ptr, RustBuffer host, uint32_t port, RustBuffer username, RustBuffer password, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_START_COPY
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_START_COPY
 RustBuffer uniffi_superfiles_fn_method_superfiles_start_copy(uint64_t ptr, RustBuffer sources, RustBuffer dest_dir, RustBuffer conflict, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_START_LOCAL_SEND
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_START_LOCAL_SEND
+uint64_t uniffi_superfiles_fn_method_superfiles_start_local_send(uint64_t ptr, RustBuffer options, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_START_MOVE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_START_MOVE
+RustBuffer uniffi_superfiles_fn_method_superfiles_start_move(uint64_t ptr, RustBuffer sources, RustBuffer dest_dir, RustBuffer conflict, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_START_SHARE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_START_SHARE
+RustBuffer uniffi_superfiles_fn_method_superfiles_start_share(uint64_t ptr, RustBuffer ids, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_START_TRANSFER
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_START_TRANSFER
+RustBuffer uniffi_superfiles_fn_method_superfiles_start_transfer(uint64_t ptr, RustBuffer sources, RustBuffer dest_dir, RustBuffer conflict, int8_t is_move, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_STAT
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_STAT
 RustBuffer uniffi_superfiles_fn_method_superfiles_stat(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_STOP_LOCAL_SEND
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_STOP_LOCAL_SEND
+void uniffi_superfiles_fn_method_superfiles_stop_local_send(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_STOP_SHARE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_STOP_SHARE
+int8_t uniffi_superfiles_fn_method_superfiles_stop_share(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_STREAM_URL
@@ -416,6 +611,26 @@ RustBuffer uniffi_superfiles_fn_method_superfiles_version(uint64_t ptr, RustCall
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_WRITE_BYTES
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_WRITE_BYTES
 void uniffi_superfiles_fn_method_superfiles_write_bytes(uint64_t ptr, RustBuffer id, uint64_t offset, RustBuffer data, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_CLONE_ZIPPROGRESSLISTENER
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_CLONE_ZIPPROGRESSLISTENER
+uint64_t uniffi_superfiles_fn_clone_zipprogresslistener(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_FREE_ZIPPROGRESSLISTENER
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_FREE_ZIPPROGRESSLISTENER
+void uniffi_superfiles_fn_free_zipprogresslistener(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_INIT_CALLBACK_VTABLE_ZIPPROGRESSLISTENER
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_INIT_CALLBACK_VTABLE_ZIPPROGRESSLISTENER
+void uniffi_superfiles_fn_init_callback_vtable_zipprogresslistener(const UniffiVTableCallbackInterfaceZipProgressListener* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_ZIPPROGRESSLISTENER_ON_PROGRESS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_ZIPPROGRESSLISTENER_ON_PROGRESS
+void uniffi_superfiles_fn_method_zipprogresslistener_on_progress(uint64_t ptr, uint64_t done, uint64_t total, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_SUPERFILES_RUSTBUFFER_ALLOC
@@ -678,6 +893,72 @@ void ffi_superfiles_rust_future_free_void(uint64_t handle
 void ffi_superfiles_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_INDEXPROGRESSLISTENER_ON_PROGRESS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_INDEXPROGRESSLISTENER_ON_PROGRESS
+uint16_t uniffi_superfiles_checksum_method_indexprogresslistener_on_progress(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_INDEXPROGRESSLISTENER_ON_FINISHED
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_INDEXPROGRESSLISTENER_ON_FINISHED
+uint16_t uniffi_superfiles_checksum_method_indexprogresslistener_on_finished(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_ANNOUNCE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_ANNOUNCE
+uint16_t uniffi_superfiles_checksum_method_localsendhandle_announce(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_ERRORS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_ERRORS
+uint16_t uniffi_superfiles_checksum_method_localsendhandle_errors(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_INFO
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_INFO
+uint16_t uniffi_superfiles_checksum_method_localsendhandle_info(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_IS_RUNNING
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_IS_RUNNING
+uint16_t uniffi_superfiles_checksum_method_localsendhandle_is_running(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_PEERS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_PEERS
+uint16_t uniffi_superfiles_checksum_method_localsendhandle_peers(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_REGISTER_AT
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_REGISTER_AT
+uint16_t uniffi_superfiles_checksum_method_localsendhandle_register_at(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_SEND
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_SEND
+uint16_t uniffi_superfiles_checksum_method_localsendhandle_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_STOP
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_LOCALSENDHANDLE_STOP
+uint16_t uniffi_superfiles_checksum_method_localsendhandle_stop(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_ADD_FAVORITE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_ADD_FAVORITE
+uint16_t uniffi_superfiles_checksum_method_superfiles_add_favorite(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_CANCEL_TRANSFER
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_CANCEL_TRANSFER
 uint16_t uniffi_superfiles_checksum_method_superfiles_cancel_transfer(void
@@ -693,6 +974,12 @@ uint16_t uniffi_superfiles_checksum_method_superfiles_capabilities(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_CLEAR_INDEX
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_CLEAR_INDEX
 uint16_t uniffi_superfiles_checksum_method_superfiles_clear_index(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_COMPRESS_ZIP
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_COMPRESS_ZIP
+uint16_t uniffi_superfiles_checksum_method_superfiles_compress_zip(void
     
 );
 #endif
@@ -720,6 +1007,12 @@ uint16_t uniffi_superfiles_checksum_method_superfiles_export_to_fd(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_FAVORITES
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_FAVORITES
+uint16_t uniffi_superfiles_checksum_method_superfiles_favorites(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_FORGET_TRANSFER
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_FORGET_TRANSFER
 uint16_t uniffi_superfiles_checksum_method_superfiles_forget_transfer(void
@@ -744,6 +1037,12 @@ uint16_t uniffi_superfiles_checksum_method_superfiles_index_dir(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_INDEX_DIR_WITH_PROGRESS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_INDEX_DIR_WITH_PROGRESS
+uint16_t uniffi_superfiles_checksum_method_superfiles_index_dir_with_progress(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_JOIN
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_JOIN
 uint16_t uniffi_superfiles_checksum_method_superfiles_join(void
@@ -753,6 +1052,18 @@ uint16_t uniffi_superfiles_checksum_method_superfiles_join(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_LIST
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_LIST
 uint16_t uniffi_superfiles_checksum_method_superfiles_list(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_LIST_CACHED
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_LIST_CACHED
+uint16_t uniffi_superfiles_checksum_method_superfiles_list_cached(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_LOCAL_SEND_HANDLE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_LOCAL_SEND_HANDLE
+uint16_t uniffi_superfiles_checksum_method_superfiles_local_send_handle(void
     
 );
 #endif
@@ -792,9 +1103,27 @@ uint16_t uniffi_superfiles_checksum_method_superfiles_read_bytes(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_RECENT_FILES
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_RECENT_FILES
+uint16_t uniffi_superfiles_checksum_method_superfiles_recent_files(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_RECORD_OPEN
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_RECORD_OPEN
+uint16_t uniffi_superfiles_checksum_method_superfiles_record_open(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_REMOVE
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_REMOVE
 uint16_t uniffi_superfiles_checksum_method_superfiles_remove(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_REMOVE_FAVORITE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_REMOVE_FAVORITE
+uint16_t uniffi_superfiles_checksum_method_superfiles_remove_favorite(void
     
 );
 #endif
@@ -822,15 +1151,57 @@ uint16_t uniffi_superfiles_checksum_method_superfiles_search(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_SMB_LIST_SHARES
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_SMB_LIST_SHARES
+uint16_t uniffi_superfiles_checksum_method_superfiles_smb_list_shares(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_START_COPY
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_START_COPY
 uint16_t uniffi_superfiles_checksum_method_superfiles_start_copy(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_START_LOCAL_SEND
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_START_LOCAL_SEND
+uint16_t uniffi_superfiles_checksum_method_superfiles_start_local_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_START_MOVE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_START_MOVE
+uint16_t uniffi_superfiles_checksum_method_superfiles_start_move(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_START_SHARE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_START_SHARE
+uint16_t uniffi_superfiles_checksum_method_superfiles_start_share(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_START_TRANSFER
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_START_TRANSFER
+uint16_t uniffi_superfiles_checksum_method_superfiles_start_transfer(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_STAT
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_STAT
 uint16_t uniffi_superfiles_checksum_method_superfiles_stat(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_STOP_LOCAL_SEND
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_STOP_LOCAL_SEND
+uint16_t uniffi_superfiles_checksum_method_superfiles_stop_local_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_STOP_SHARE
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_STOP_SHARE
+uint16_t uniffi_superfiles_checksum_method_superfiles_stop_share(void
     
 );
 #endif
@@ -867,6 +1238,12 @@ uint16_t uniffi_superfiles_checksum_method_superfiles_version(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_WRITE_BYTES
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_WRITE_BYTES
 uint16_t uniffi_superfiles_checksum_method_superfiles_write_bytes(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_ZIPPROGRESSLISTENER_ON_PROGRESS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_ZIPPROGRESSLISTENER_ON_PROGRESS
+uint16_t uniffi_superfiles_checksum_method_zipprogresslistener_on_progress(void
     
 );
 #endif

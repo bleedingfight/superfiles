@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- adaptive icon（minSdk 26 已全量支持，无需 PNG 兜底）：
+     背景=品牌蓝渐变，前景=sbadge 构图（配色见 ic_launcher_foreground.xml 注释），
+     单色层 = Android 13+ 主题图标。 -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+</adaptive-icon>

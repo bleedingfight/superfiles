@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Super Files · 单色标志（README 页眉 / CLI / 文档水印等单色场景）
+  与主图标同一「叠页」造型，透明底板，默认 `fill="#466DA6"`（根元素改一处即换色），
+  透明度阶梯 0.22 / 0.45 / 1.0 表现层次。
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" fill="#466DA6">
+  <defs>
+    <rect id="sheet" x="-180" y="-470" width="360" height="470" rx="52"/>
+    <!-- 前页：右上角 110px 斜折，折口两端小圆角 r≈20 -->
+    <path id="frontSheet" d="
+      M -128 -470
+      H 50
+      Q 70 -470 84.14 -455.86
+      L 165.86 -374.14
+      Q 180 -360 180 -340
+      V -52
+      A 52 52 0 0 1 128 0
+      H -128
+      A 52 52 0 0 1 -180 -52
+      V -418
+      A 52 52 0 0 1 -128 -470
+      Z"/>
+  </defs>
+
+  <g transform="translate(512,548) scale(1.06)">
+    <use href="#sheet" transform="rotate(-9)" opacity="0.22"/>
+    <use href="#sheet" transform="rotate(9)" opacity="0.45"/>
+    <!-- 前页路径自带右上缺角 = 折角镂空，透出底色 -->
+    <use href="#frontSheet"/>
+  </g>
+</svg>

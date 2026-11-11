@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标前景层：sbadge 构图（叠层文件 × 闪电 × S 徽章，设计源 design/icon/superfiles-bolt.svg，
+  参考 superfiles-icons 图标包推荐方案），配色全部取自 design/tokens.json：
+  后层文件 #304D76(usageDeep) / 前层文件 #FCFBF8→#F0ECE2(surface 系) /
+  闪电 #466DA6(primary) / S 徽章白圈 + #A18460(primaryWarm) 描边。
+  108dp 视口 + 0.17 缩放：全部关键内容收敛在 72dp 安全圆内（圆形 mask 不裁徽章）。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:scaleX="0.17"
+        android:scaleY="0.17"
+        android:translateX="8.78"
+        android:translateY="10.48">
+
+        <!-- 后层文件（绕自身中心旋转 10°） -->
+        <group
+            android:pivotX="280"
+            android:pivotY="270"
+            android:rotation="10">
+            <path
+                android:fillColor="#304D76"
+                android:pathData="M190,104 H370 A34,34 0 0 1 404,138 V392 A34,34 0 0 1 370,426 H190 A34,34 0 0 1 156,392 V138 A34,34 0 0 1 190,104 Z" />
+        </group>
+
+        <!-- 前层文件：暖白纵向渐变 -->
+        <path android:pathData="M146,86 H326 A34,34 0 0 1 360,120 V374 A34,34 0 0 1 326,408 H146 A34,34 0 0 1 112,374 V120 A34,34 0 0 1 146,86 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="236"
+                    android:startY="86"
+                    android:endX="236"
+                    android:endY="408"
+                    android:startColor="#FCFBF8"
+                    android:endColor="#F0ECE2" />
+            </aapt:attr>
+        </path>
+
+        <!-- 闪电：品牌主色 -->
+        <path
+            android:fillColor="#466DA6"
+            android:pathData="M272,148 L216,268 L258,268 L238,376 L320,246 L276,246 L300,148 Z" />
+
+        <!-- S 徽章（跨前后层右下角）：白圈 + 暖棕 S 描边 -->
+        <group
+            android:translateX="332"
+            android:translateY="332">
+            <path
+                android:fillColor="#FFFFFF"
+                android:pathData="M0,-64 A64,64 0 1 1 0,64 A64,64 0 1 1 0,-64 Z" />
+            <path
+                android:pathData="M22,-28 L-24,-28 L-22,28 L24,28"
+                android:strokeColor="#A18460"
+                android:strokeWidth="17"
+                android:strokeLineCap="round" />
+        </group>
+    </group>
+</vector>

@@ -460,7 +460,29 @@ fileprivate final class UniffiHandleMap<T>: @unchecked Sendable {
 
 
 // Public interface members begin here.
+// Magic number for the Rust proxy to call using the same mechanism as every other method,
+// to free the callback once it's dropped by Rust.
+private let IDX_CALLBACK_FREE: Int32 = 0
+// Callback return codes
+private let UNIFFI_CALLBACK_SUCCESS: Int32 = 0
+private let UNIFFI_CALLBACK_ERROR: Int32 = 1
+private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
+    typealias FfiType = UInt16
+    typealias SwiftType = UInt16
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt16 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -523,6 +545,22 @@ fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
 
     public static func write(_ value: Int64, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterFloat: FfiConverterPrimitive {
+    typealias FfiType = Float
+    typealias SwiftType = Float
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Float {
+        return try lift(readFloat(&buf))
+    }
+
+    public static func write(_ value: Float, into buf: inout [UInt8]) {
+        writeFloat(&buf, lower(value))
     }
 }
 
@@ -618,15 +656,493 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 /**
+ * Progress callback for `indexDirWithProgress`：
+ * `fraction ∈ [0,1]` 单调递增（按「已处理目录 / 已处理+待处理」估算）。
+ */
+public protocol IndexProgressListener: AnyObject, Sendable {
+    
+    func onProgress(directories: UInt64, entries: UInt64, fraction: Float) 
+    
+    func onFinished(total: UInt64) 
+    
+}
+/**
+ * Progress callback for `indexDirWithProgress`：
+ * `fraction ∈ [0,1]` 单调递增（按「已处理目录 / 已处理+待处理」估算）。
+ */
+open class IndexProgressListenerImpl: IndexProgressListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_superfiles_fn_clone_indexprogresslistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_superfiles_fn_free_indexprogresslistener(handle, $0) }
+    }
+
+    
+
+    
+open func onProgress(directories: UInt64, entries: UInt64, fraction: Float)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_indexprogresslistener_on_progress(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(directories),
+        FfiConverterUInt64.lower(entries),
+        FfiConverterFloat.lower(fraction),uniffiCallStatus
+    )
+}
+}
+    
+open func onFinished(total: UInt64)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_indexprogresslistener_on_finished(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(total),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceIndexProgressListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceIndexProgressListener = UniffiVTableCallbackInterfaceIndexProgressListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeIndexProgressListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface IndexProgressListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeIndexProgressListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface IndexProgressListener: handle missing in uniffiClone")
+            }
+        },
+        onProgress: { (
+            uniffiHandle: UInt64,
+            directories: UInt64,
+            entries: UInt64,
+            fraction: Float,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeIndexProgressListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onProgress(
+                     directories: try FfiConverterUInt64.lift(directories),
+                     entries: try FfiConverterUInt64.lift(entries),
+                     fraction: try FfiConverterFloat.lift(fraction)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        onFinished: { (
+            uniffiHandle: UInt64,
+            total: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeIndexProgressListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onFinished(
+                     total: try FfiConverterUInt64.lift(total)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceIndexProgressListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceIndexProgressListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitIndexProgressListener() {
+    uniffi_superfiles_fn_init_callback_vtable_indexprogresslistener(UniffiCallbackInterfaceIndexProgressListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeIndexProgressListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<IndexProgressListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = IndexProgressListener
+
+    public static func lift(_ handle: UInt64) throws -> IndexProgressListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return IndexProgressListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: IndexProgressListener) -> UInt64 {
+         if let rustImpl = value as? IndexProgressListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IndexProgressListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: IndexProgressListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIndexProgressListener_lift(_ handle: UInt64) throws -> IndexProgressListener {
+    return try FfiConverterTypeIndexProgressListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIndexProgressListener_lower(_ value: IndexProgressListener) -> UInt64 {
+    return FfiConverterTypeIndexProgressListener.lower(value)
+}
+
+
+
+
+
+
+public protocol LocalSendHandleProtocol: AnyObject, Sendable {
+    
+    /**
+     * Force an immediate multicast announcement (UI "refresh").
+     */
+    func announce() 
+    
+    /**
+     * Recent protocol errors (interop diagnostics, newest last).
+     */
+    func errors()  -> [String]
+    
+    func info()  -> LocalSendInfo
+    
+    func isRunning()  -> Bool
+    
+    func peers()  -> [LocalSendPeer]
+    
+    /**
+     * Manual IP fallback. `fingerprint` is the expected SHA-256 of the peer
+     * certificate; omit it only for first-time discovery.
+     */
+    func registerAt(ip: String, port: UInt16, fingerprint: String?) throws  -> LocalSendPeer
+    
+    func send(peer: LocalSendPeer, ids: [String]) throws 
+    
+    func stop() 
+    
+}
+open class LocalSendHandle: LocalSendHandleProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_superfiles_fn_clone_localsendhandle(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_superfiles_fn_free_localsendhandle(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Force an immediate multicast announcement (UI "refresh").
+     */
+open func announce()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_localsendhandle_announce(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Recent protocol errors (interop diagnostics, newest last).
+     */
+open func errors() -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_localsendhandle_errors(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func info() -> LocalSendInfo  {
+    return try!  FfiConverterTypeLocalSendInfo_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_localsendhandle_info(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func isRunning() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_localsendhandle_is_running(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func peers() -> [LocalSendPeer]  {
+    return try!  FfiConverterSequenceTypeLocalSendPeer.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_localsendhandle_peers(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Manual IP fallback. `fingerprint` is the expected SHA-256 of the peer
+     * certificate; omit it only for first-time discovery.
+     */
+open func registerAt(ip: String, port: UInt16, fingerprint: String?)throws  -> LocalSendPeer  {
+    return try  FfiConverterTypeLocalSendPeer_lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_localsendhandle_register_at(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(ip),
+        FfiConverterUInt16.lower(port),
+        FfiConverterOptionString.lower(fingerprint),uniffiCallStatus
+    )
+})
+}
+    
+open func send(peer: LocalSendPeer, ids: [String])throws   {try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_localsendhandle_send(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeLocalSendPeer_lower(peer),
+        FfiConverterSequenceString.lower(ids),uniffiCallStatus
+    )
+}
+}
+    
+open func stop()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_localsendhandle_stop(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocalSendHandle: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = LocalSendHandle
+
+    public static func lift(_ handle: UInt64) throws -> LocalSendHandle {
+        return LocalSendHandle(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: LocalSendHandle) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocalSendHandle {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: LocalSendHandle, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalSendHandle_lift(_ handle: UInt64) throws -> LocalSendHandle {
+    return try FfiConverterTypeLocalSendHandle.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalSendHandle_lower(_ value: LocalSendHandle) -> UInt64 {
+    return FfiConverterTypeLocalSendHandle.lower(value)
+}
+
+
+
+
+
+
+/**
  * The single object the app talks to.
  */
 public protocol SuperFilesProtocol: AnyObject, Sendable {
+    
+    /**
+     * 收藏（快捷访问标记）：纯标记不改扫描行为。
+     */
+    func addFavorite(id: String) throws 
     
     func cancelTransfer(id: String) 
     
     func capabilities(id: String) throws  -> Capabilities
     
     func clearIndex() throws 
+    
+    /**
+     * Zip `sources` (files or directories, walked recursively) into
+     * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
+     * auto-renamed away with a `-N` suffix). Streams through a bounded
+     * channel so memory stays flat for big archives; `listener` receives
+     * `(done, total)` source-byte progress. Blocking call — invoke it off
+     * the UI thread.
+     */
+    func compressZip(sources: [String], destDir: String, name: String, method: ZipMethod, listener: ZipProgressListener) throws  -> Entry
     
     func createDir(parent: String, name: String) throws  -> Entry
     
@@ -642,6 +1158,11 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
      * Android `ParcelFileDescriptor`). Returns bytes written.
      */
     func exportToFd(id: String, fd: Int32, offset: UInt64) throws  -> UInt64
+    
+    /**
+     * 收藏列表（按收藏时间倒序；已删除的路径自动跳过）。
+     */
+    func favorites(limit: UInt32) throws  -> [FavoriteEntry]
     
     /**
      * Drop a finished transfer from the registry (UI dismissed it). Also
@@ -663,9 +1184,29 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
      */
     func indexDir(id: String) throws  -> UInt32
     
+    /**
+     * Like [`index_dir`](Self::index_dir) but (a) reports progress on
+     * `listener`, (b) skips unreadable directories, and (c) is **incremental**:
+     * child directories whose mtime is unchanged since the last scan are not
+     * descended into (their whole subtree is already indexed), and freshly
+     * listed directories get reconciled (vanished entries are pruned from
+     * the index). Blocking call — run it off the UI thread; callbacks arrive
+     * on the calling thread.
+     */
+    func indexDirWithProgress(id: String, listener: IndexProgressListener) throws  -> UInt64
+    
     func join(parent: String, name: String)  -> String
     
     func list(id: String) throws  -> [Entry]
+    
+    /**
+     * 离线缓存列举（M1 离线浏览）：返回索引中 `id` 的直接子项与上次更新
+     * 时间。`entries` 为空且 `listedAtMs` 为 None 表示无缓存可用；UI 在
+     * 实时 `list` 失败时调用，并把结果标注为「过期缓存」。
+     */
+    func listCached(id: String)  -> CachedListing
+    
+    func localSendHandle()  -> LocalSendHandle?
     
     /**
      * Mount an SFTP host (password auth for now; key auth lands with the UI).
@@ -675,7 +1216,7 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
     /**
      * Mount an SMB share (`\\host\share`); returns its root id.
      */
-    func mountSmb(label: String, host: String, share: String, username: String, password: String) throws  -> String
+    func mountSmb(label: String, host: String, share: String, username: String, password: String, port: UInt32) throws  -> String
     
     /**
      * Mount a WebDAV collection; returns its root id (`webdav://host/`).
@@ -701,7 +1242,19 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
      */
     func readBytes(id: String, offset: UInt64, len: UInt32) throws  -> Data
     
+    /**
+     * 最近打开列表（按打开时间倒序；已删除的路径自动跳过）。
+     */
+    func recentFiles(limit: UInt32) throws  -> [RecentOpen]
+    
+    /**
+     * 记录一次「打开」（首页「最近打开」数据源；需要索引）。
+     */
+    func recordOpen(id: String) throws 
+    
     func remove(id: String, recursive: Bool) throws 
+    
+    func removeFavorite(id: String) throws 
     
     func rename(id: String, newName: String) throws  -> Entry
     
@@ -730,6 +1283,11 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
     func search(query: String, limit: UInt32) throws  -> [Entry]
     
     /**
+     * 枚举 SMB 服务器上可访问的共享名（UI「列出共享」用；需要可达 + 凭据有效）。
+     */
+    func smbListShares(host: String, port: UInt32, username: String, password: String) throws  -> [String]
+    
+    /**
      * Start a background copy. Returns a transfer id for polling/cancelling.
      *
      * When the core was opened with an index, the copy is journaled: a
@@ -738,7 +1296,37 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
      */
     func startCopy(sources: [String], destDir: String, conflict: ConflictPolicy) throws  -> String
     
+    /**
+     * Start the LocalSend-compatible HTTPS receiver + multicast discovery.
+     * Stops any previous instance first.
+     */
+    func startLocalSend(options: LocalSendOptions) throws  -> LocalSendHandle
+    
+    /**
+     * 移动：复制成功后由引擎删除源（并把 `is_move` 写进 transfers 表，
+     * 进程被杀后恢复的任务仍然会完成删除）。
+     */
+    func startMove(sources: [String], destDir: String, conflict: ConflictPolicy) throws  -> String
+    
+    /**
+     * 就近分享（ADR 0005）：把选中的文件经局域网 HTTP 暴露为「链接 + 二维码」
+     * 可下载的临时站点；浏览器免安装直接收，App 走 `manifest.json` 批量收取。
+     *
+     * 仅限文件——目录请 `compressZip` 成包再分享。清单在启动时固定
+     * （名称/大小/mime），内容仍实时读后端。再次调用会停掉上一次分享。
+     */
+    func startShare(ids: [String]) throws  -> ShareInfo
+    
+    func startTransfer(sources: [String], destDir: String, conflict: ConflictPolicy, isMove: Bool) throws  -> String
+    
     func stat(id: String) throws  -> Entry
+    
+    func stopLocalSend() 
+    
+    /**
+     * 关闭当前分享；返回是否有进行中的分享被关闭。
+     */
+    func stopShare()  -> Bool
     
     /**
      * Loopback HTTP(+Range) URL for any backend file with `can_seek`.
@@ -833,6 +1421,18 @@ public static func `open`(localRoot: String, indexPath: String?)throws  -> Super
     
 
     
+    /**
+     * 收藏（快捷访问标记）：纯标记不改扫描行为。
+     */
+open func addFavorite(id: String)throws   {try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_add_favorite(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
 open func cancelTransfer(id: String)  {try! rustCall() {
         uniffiCallStatus in
     uniffi_superfiles_fn_method_superfiles_cancel_transfer(
@@ -858,6 +1458,28 @@ open func clearIndex()throws   {try rustCallWithError(FfiConverterTypeSfError_li
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Zip `sources` (files or directories, walked recursively) into
+     * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
+     * auto-renamed away with a `-N` suffix). Streams through a bounded
+     * channel so memory stays flat for big archives; `listener` receives
+     * `(done, total)` source-byte progress. Blocking call — invoke it off
+     * the UI thread.
+     */
+open func compressZip(sources: [String], destDir: String, name: String, method: ZipMethod, listener: ZipProgressListener)throws  -> Entry  {
+    return try  FfiConverterTypeEntry_lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_compress_zip(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceString.lower(sources),
+        FfiConverterString.lower(destDir),
+        FfiConverterString.lower(name),
+        FfiConverterTypeZipMethod_lower(method),
+        FfiConverterTypeZipProgressListener_lower(listener),uniffiCallStatus
+    )
+})
 }
     
 open func createDir(parent: String, name: String)throws  -> Entry  {
@@ -907,6 +1529,19 @@ open func exportToFd(id: String, fd: Int32, offset: UInt64)throws  -> UInt64  {
         FfiConverterString.lower(id),
         FfiConverterInt32.lower(fd),
         FfiConverterUInt64.lower(offset),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * 收藏列表（按收藏时间倒序；已删除的路径自动跳过）。
+     */
+open func favorites(limit: UInt32)throws  -> [FavoriteEntry]  {
+    return try  FfiConverterSequenceTypeFavoriteEntry.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_favorites(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(limit),uniffiCallStatus
     )
 })
 }
@@ -963,6 +1598,26 @@ open func indexDir(id: String)throws  -> UInt32  {
 })
 }
     
+    /**
+     * Like [`index_dir`](Self::index_dir) but (a) reports progress on
+     * `listener`, (b) skips unreadable directories, and (c) is **incremental**:
+     * child directories whose mtime is unchanged since the last scan are not
+     * descended into (their whole subtree is already indexed), and freshly
+     * listed directories get reconciled (vanished entries are pruned from
+     * the index). Blocking call — run it off the UI thread; callbacks arrive
+     * on the calling thread.
+     */
+open func indexDirWithProgress(id: String, listener: IndexProgressListener)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_index_dir_with_progress(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),
+        FfiConverterTypeIndexProgressListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
 open func join(parent: String, name: String) -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
         uniffiCallStatus in
@@ -980,6 +1635,30 @@ open func list(id: String)throws  -> [Entry]  {
     uniffi_superfiles_fn_method_superfiles_list(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * 离线缓存列举（M1 离线浏览）：返回索引中 `id` 的直接子项与上次更新
+     * 时间。`entries` 为空且 `listedAtMs` 为 None 表示无缓存可用；UI 在
+     * 实时 `list` 失败时调用，并把结果标注为「过期缓存」。
+     */
+open func listCached(id: String) -> CachedListing  {
+    return try!  FfiConverterTypeCachedListing_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_list_cached(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+open func localSendHandle() -> LocalSendHandle?  {
+    return try!  FfiConverterOptionTypeLocalSendHandle.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_local_send_handle(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1004,7 +1683,7 @@ open func mountSftp(label: String, host: String, port: UInt32, username: String,
     /**
      * Mount an SMB share (`\\host\share`); returns its root id.
      */
-open func mountSmb(label: String, host: String, share: String, username: String, password: String)throws  -> String  {
+open func mountSmb(label: String, host: String, share: String, username: String, password: String, port: UInt32)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
         uniffiCallStatus in
     uniffi_superfiles_fn_method_superfiles_mount_smb(
@@ -1013,7 +1692,8 @@ open func mountSmb(label: String, host: String, share: String, username: String,
         FfiConverterString.lower(host),
         FfiConverterString.lower(share),
         FfiConverterString.lower(username),
-        FfiConverterString.lower(password),uniffiCallStatus
+        FfiConverterString.lower(password),
+        FfiConverterUInt32.lower(port),uniffiCallStatus
     )
 })
 }
@@ -1077,12 +1757,46 @@ open func readBytes(id: String, offset: UInt64, len: UInt32)throws  -> Data  {
 })
 }
     
+    /**
+     * 最近打开列表（按打开时间倒序；已删除的路径自动跳过）。
+     */
+open func recentFiles(limit: UInt32)throws  -> [RecentOpen]  {
+    return try  FfiConverterSequenceTypeRecentOpen.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_recent_files(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(limit),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * 记录一次「打开」（首页「最近打开」数据源；需要索引）。
+     */
+open func recordOpen(id: String)throws   {try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_record_open(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
 open func remove(id: String, recursive: Bool)throws   {try rustCallWithError(FfiConverterTypeSfError_lift) {
         uniffiCallStatus in
     uniffi_superfiles_fn_method_superfiles_remove(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(id),
         FfiConverterBool.lower(recursive),uniffiCallStatus
+    )
+}
+}
+    
+open func removeFavorite(id: String)throws   {try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_remove_favorite(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
     )
 }
 }
@@ -1146,6 +1860,22 @@ open func search(query: String, limit: UInt32)throws  -> [Entry]  {
 }
     
     /**
+     * 枚举 SMB 服务器上可访问的共享名（UI「列出共享」用；需要可达 + 凭据有效）。
+     */
+open func smbListShares(host: String, port: UInt32, username: String, password: String)throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_smb_list_shares(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(host),
+        FfiConverterUInt32.lower(port),
+        FfiConverterString.lower(username),
+        FfiConverterString.lower(password),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Start a background copy. Returns a transfer id for polling/cancelling.
      *
      * When the core was opened with an index, the copy is journaled: a
@@ -1164,12 +1894,92 @@ open func startCopy(sources: [String], destDir: String, conflict: ConflictPolicy
 })
 }
     
+    /**
+     * Start the LocalSend-compatible HTTPS receiver + multicast discovery.
+     * Stops any previous instance first.
+     */
+open func startLocalSend(options: LocalSendOptions)throws  -> LocalSendHandle  {
+    return try  FfiConverterTypeLocalSendHandle_lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_start_local_send(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeLocalSendOptions_lower(options),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * 移动：复制成功后由引擎删除源（并把 `is_move` 写进 transfers 表，
+     * 进程被杀后恢复的任务仍然会完成删除）。
+     */
+open func startMove(sources: [String], destDir: String, conflict: ConflictPolicy)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_start_move(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceString.lower(sources),
+        FfiConverterString.lower(destDir),
+        FfiConverterTypeConflictPolicy_lower(conflict),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * 就近分享（ADR 0005）：把选中的文件经局域网 HTTP 暴露为「链接 + 二维码」
+     * 可下载的临时站点；浏览器免安装直接收，App 走 `manifest.json` 批量收取。
+     *
+     * 仅限文件——目录请 `compressZip` 成包再分享。清单在启动时固定
+     * （名称/大小/mime），内容仍实时读后端。再次调用会停掉上一次分享。
+     */
+open func startShare(ids: [String])throws  -> ShareInfo  {
+    return try  FfiConverterTypeShareInfo_lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_start_share(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceString.lower(ids),uniffiCallStatus
+    )
+})
+}
+    
+open func startTransfer(sources: [String], destDir: String, conflict: ConflictPolicy, isMove: Bool)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_start_transfer(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceString.lower(sources),
+        FfiConverterString.lower(destDir),
+        FfiConverterTypeConflictPolicy_lower(conflict),
+        FfiConverterBool.lower(isMove),uniffiCallStatus
+    )
+})
+}
+    
 open func stat(id: String)throws  -> Entry  {
     return try  FfiConverterTypeEntry_lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
         uniffiCallStatus in
     uniffi_superfiles_fn_method_superfiles_stat(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+open func stopLocalSend()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_stop_local_send(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * 关闭当前分享；返回是否有进行中的分享被关闭。
+     */
+open func stopShare() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_stop_share(
+            self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
@@ -1287,6 +2097,277 @@ public func FfiConverterTypeSuperFiles_lower(_ value: SuperFiles) -> UInt64 {
 }
 
 
+
+
+
+
+/**
+ * Progress callback for `compressZip`: reports `(done, total)` source bytes.
+ */
+public protocol ZipProgressListener: AnyObject, Sendable {
+    
+    func onProgress(done: UInt64, total: UInt64) 
+    
+}
+/**
+ * Progress callback for `compressZip`: reports `(done, total)` source bytes.
+ */
+open class ZipProgressListenerImpl: ZipProgressListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_superfiles_fn_clone_zipprogresslistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_superfiles_fn_free_zipprogresslistener(handle, $0) }
+    }
+
+    
+
+    
+open func onProgress(done: UInt64, total: UInt64)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_zipprogresslistener_on_progress(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(done),
+        FfiConverterUInt64.lower(total),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceZipProgressListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceZipProgressListener = UniffiVTableCallbackInterfaceZipProgressListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeZipProgressListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface ZipProgressListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeZipProgressListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface ZipProgressListener: handle missing in uniffiClone")
+            }
+        },
+        onProgress: { (
+            uniffiHandle: UInt64,
+            done: UInt64,
+            total: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeZipProgressListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onProgress(
+                     done: try FfiConverterUInt64.lift(done),
+                     total: try FfiConverterUInt64.lift(total)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceZipProgressListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceZipProgressListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitZipProgressListener() {
+    uniffi_superfiles_fn_init_callback_vtable_zipprogresslistener(UniffiCallbackInterfaceZipProgressListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeZipProgressListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<ZipProgressListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = ZipProgressListener
+
+    public static func lift(_ handle: UInt64) throws -> ZipProgressListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return ZipProgressListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: ZipProgressListener) -> UInt64 {
+         if let rustImpl = value as? ZipProgressListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ZipProgressListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: ZipProgressListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZipProgressListener_lift(_ handle: UInt64) throws -> ZipProgressListener {
+    return try FfiConverterTypeZipProgressListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZipProgressListener_lower(_ value: ZipProgressListener) -> UInt64 {
+    return FfiConverterTypeZipProgressListener.lower(value)
+}
+
+
+
+
+/**
+ * A directory listing served from the local cache (M1 离线浏览)：
+ * 实时 `list` 失败（断网/服务不可达）时由 UI 回退展示，并附过期标记。
+ */
+public struct CachedListing: Equatable, Hashable {
+    public var entries: [Entry]
+    /**
+     * 上次成功列举时间（epoch ms；None = 该目录从未缓存）。
+     */
+    public var listedAtMs: Int64?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(entries: [Entry], 
+        /**
+         * 上次成功列举时间（epoch ms；None = 该目录从未缓存）。
+         */listedAtMs: Int64?) {
+        self.entries = entries
+        self.listedAtMs = listedAtMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CachedListing: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCachedListing: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CachedListing {
+        return
+            try CachedListing(
+                entries: FfiConverterSequenceTypeEntry.read(from: &buf), 
+                listedAtMs: FfiConverterOptionInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CachedListing, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeEntry.write(value.entries, into: &buf)
+        FfiConverterOptionInt64.write(value.listedAtMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCachedListing_lift(_ buf: RustBuffer) throws -> CachedListing {
+    return try FfiConverterTypeCachedListing.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCachedListing_lower(_ value: CachedListing) -> RustBuffer {
+    return FfiConverterTypeCachedListing.lower(value)
+}
 
 
 /**
@@ -1464,6 +2545,289 @@ public func FfiConverterTypeEntry_lower(_ value: Entry) -> RustBuffer {
 
 
 /**
+ * One favorited entry, resolved from the index + vfs.
+ */
+public struct FavoriteEntry: Equatable, Hashable {
+    public var entry: Entry
+    public var addedMs: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(entry: Entry, addedMs: UInt64) {
+        self.entry = entry
+        self.addedMs = addedMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension FavoriteEntry: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFavoriteEntry: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FavoriteEntry {
+        return
+            try FavoriteEntry(
+                entry: FfiConverterTypeEntry.read(from: &buf), 
+                addedMs: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FavoriteEntry, into buf: inout [UInt8]) {
+        FfiConverterTypeEntry.write(value.entry, into: &buf)
+        FfiConverterUInt64.write(value.addedMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFavoriteEntry_lift(_ buf: RustBuffer) throws -> FavoriteEntry {
+    return try FfiConverterTypeFavoriteEntry.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFavoriteEntry_lower(_ value: FavoriteEntry) -> RustBuffer {
+    return FfiConverterTypeFavoriteEntry.lower(value)
+}
+
+
+public struct LocalSendInfo: Equatable, Hashable {
+    public var alias: String
+    public var port: UInt16
+    public var fingerprint: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(alias: String, port: UInt16, fingerprint: String) {
+        self.alias = alias
+        self.port = port
+        self.fingerprint = fingerprint
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LocalSendInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocalSendInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocalSendInfo {
+        return
+            try LocalSendInfo(
+                alias: FfiConverterString.read(from: &buf), 
+                port: FfiConverterUInt16.read(from: &buf), 
+                fingerprint: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LocalSendInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.alias, into: &buf)
+        FfiConverterUInt16.write(value.port, into: &buf)
+        FfiConverterString.write(value.fingerprint, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalSendInfo_lift(_ buf: RustBuffer) throws -> LocalSendInfo {
+    return try FfiConverterTypeLocalSendInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalSendInfo_lower(_ value: LocalSendInfo) -> RustBuffer {
+    return FfiConverterTypeLocalSendInfo.lower(value)
+}
+
+
+public struct LocalSendOptions: Equatable, Hashable {
+    public var alias: String
+    public var deviceModel: String
+    public var port: UInt16
+    /**
+     * Persistent certificate/key directory (usually app filesDir).
+     */
+    public var storeDir: String
+    /**
+     * VFS id of the receive directory.
+     */
+    public var destDir: String
+    public var pin: String?
+    public var enableDiscovery: Bool
+    /**
+     * Security: auto-stop after this many seconds without transfer activity
+     * (0 = never).
+     */
+    public var idleTimeoutSecs: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(alias: String, deviceModel: String, port: UInt16, 
+        /**
+         * Persistent certificate/key directory (usually app filesDir).
+         */storeDir: String, 
+        /**
+         * VFS id of the receive directory.
+         */destDir: String, pin: String?, enableDiscovery: Bool, 
+        /**
+         * Security: auto-stop after this many seconds without transfer activity
+         * (0 = never).
+         */idleTimeoutSecs: UInt64) {
+        self.alias = alias
+        self.deviceModel = deviceModel
+        self.port = port
+        self.storeDir = storeDir
+        self.destDir = destDir
+        self.pin = pin
+        self.enableDiscovery = enableDiscovery
+        self.idleTimeoutSecs = idleTimeoutSecs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LocalSendOptions: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocalSendOptions: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocalSendOptions {
+        return
+            try LocalSendOptions(
+                alias: FfiConverterString.read(from: &buf), 
+                deviceModel: FfiConverterString.read(from: &buf), 
+                port: FfiConverterUInt16.read(from: &buf), 
+                storeDir: FfiConverterString.read(from: &buf), 
+                destDir: FfiConverterString.read(from: &buf), 
+                pin: FfiConverterOptionString.read(from: &buf), 
+                enableDiscovery: FfiConverterBool.read(from: &buf), 
+                idleTimeoutSecs: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LocalSendOptions, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.alias, into: &buf)
+        FfiConverterString.write(value.deviceModel, into: &buf)
+        FfiConverterUInt16.write(value.port, into: &buf)
+        FfiConverterString.write(value.storeDir, into: &buf)
+        FfiConverterString.write(value.destDir, into: &buf)
+        FfiConverterOptionString.write(value.pin, into: &buf)
+        FfiConverterBool.write(value.enableDiscovery, into: &buf)
+        FfiConverterUInt64.write(value.idleTimeoutSecs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalSendOptions_lift(_ buf: RustBuffer) throws -> LocalSendOptions {
+    return try FfiConverterTypeLocalSendOptions.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalSendOptions_lower(_ value: LocalSendOptions) -> RustBuffer {
+    return FfiConverterTypeLocalSendOptions.lower(value)
+}
+
+
+public struct LocalSendPeer: Equatable, Hashable {
+    public var alias: String
+    public var ip: String
+    public var port: UInt16
+    public var fingerprint: String
+    public var deviceType: String
+    public var lastSeenMs: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(alias: String, ip: String, port: UInt16, fingerprint: String, deviceType: String, lastSeenMs: UInt64) {
+        self.alias = alias
+        self.ip = ip
+        self.port = port
+        self.fingerprint = fingerprint
+        self.deviceType = deviceType
+        self.lastSeenMs = lastSeenMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LocalSendPeer: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLocalSendPeer: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocalSendPeer {
+        return
+            try LocalSendPeer(
+                alias: FfiConverterString.read(from: &buf), 
+                ip: FfiConverterString.read(from: &buf), 
+                port: FfiConverterUInt16.read(from: &buf), 
+                fingerprint: FfiConverterString.read(from: &buf), 
+                deviceType: FfiConverterString.read(from: &buf), 
+                lastSeenMs: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LocalSendPeer, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.alias, into: &buf)
+        FfiConverterString.write(value.ip, into: &buf)
+        FfiConverterUInt16.write(value.port, into: &buf)
+        FfiConverterString.write(value.fingerprint, into: &buf)
+        FfiConverterString.write(value.deviceType, into: &buf)
+        FfiConverterUInt64.write(value.lastSeenMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalSendPeer_lift(_ buf: RustBuffer) throws -> LocalSendPeer {
+    return try FfiConverterTypeLocalSendPeer.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLocalSendPeer_lower(_ value: LocalSendPeer) -> RustBuffer {
+    return FfiConverterTypeLocalSendPeer.lower(value)
+}
+
+
+/**
  * One mounted remote connection, as listed by the connection UI.
  */
 public struct MountInfo: Equatable, Hashable {
@@ -1533,6 +2897,7 @@ public struct PendingTransfer: Equatable, Hashable {
     public var id: String
     public var sources: [String]
     public var destDir: String
+    public var isMove: Bool
     public var filesTotal: UInt64
     public var filesDone: UInt64
     public var bytesTotal: UInt64
@@ -1540,10 +2905,11 @@ public struct PendingTransfer: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, sources: [String], destDir: String, filesTotal: UInt64, filesDone: UInt64, bytesTotal: UInt64, bytesDone: UInt64) {
+    public init(id: String, sources: [String], destDir: String, isMove: Bool, filesTotal: UInt64, filesDone: UInt64, bytesTotal: UInt64, bytesDone: UInt64) {
         self.id = id
         self.sources = sources
         self.destDir = destDir
+        self.isMove = isMove
         self.filesTotal = filesTotal
         self.filesDone = filesDone
         self.bytesTotal = bytesTotal
@@ -1569,6 +2935,7 @@ public struct FfiConverterTypePendingTransfer: FfiConverterRustBuffer {
                 id: FfiConverterString.read(from: &buf), 
                 sources: FfiConverterSequenceString.read(from: &buf), 
                 destDir: FfiConverterString.read(from: &buf), 
+                isMove: FfiConverterBool.read(from: &buf), 
                 filesTotal: FfiConverterUInt64.read(from: &buf), 
                 filesDone: FfiConverterUInt64.read(from: &buf), 
                 bytesTotal: FfiConverterUInt64.read(from: &buf), 
@@ -1580,6 +2947,7 @@ public struct FfiConverterTypePendingTransfer: FfiConverterRustBuffer {
         FfiConverterString.write(value.id, into: &buf)
         FfiConverterSequenceString.write(value.sources, into: &buf)
         FfiConverterString.write(value.destDir, into: &buf)
+        FfiConverterBool.write(value.isMove, into: &buf)
         FfiConverterUInt64.write(value.filesTotal, into: &buf)
         FfiConverterUInt64.write(value.filesDone, into: &buf)
         FfiConverterUInt64.write(value.bytesTotal, into: &buf)
@@ -1600,6 +2968,130 @@ public func FfiConverterTypePendingTransfer_lift(_ buf: RustBuffer) throws -> Pe
 #endif
 public func FfiConverterTypePendingTransfer_lower(_ value: PendingTransfer) -> RustBuffer {
     return FfiConverterTypePendingTransfer.lower(value)
+}
+
+
+/**
+ * One recently opened file, resolved from the index + vfs.
+ */
+public struct RecentOpen: Equatable, Hashable {
+    public var entry: Entry
+    public var openedMs: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(entry: Entry, openedMs: UInt64) {
+        self.entry = entry
+        self.openedMs = openedMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RecentOpen: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRecentOpen: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RecentOpen {
+        return
+            try RecentOpen(
+                entry: FfiConverterTypeEntry.read(from: &buf), 
+                openedMs: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RecentOpen, into buf: inout [UInt8]) {
+        FfiConverterTypeEntry.write(value.entry, into: &buf)
+        FfiConverterUInt64.write(value.openedMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecentOpen_lift(_ buf: RustBuffer) throws -> RecentOpen {
+    return try FfiConverterTypeRecentOpen.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecentOpen_lower(_ value: RecentOpen) -> RustBuffer {
+    return FfiConverterTypeRecentOpen.lower(value)
+}
+
+
+/**
+ * 一次进行中「就近分享」的信息（ADR 0005）。
+ */
+public struct ShareInfo: Equatable, Hashable {
+    /**
+     * 二维码/链接内容：`http://<lan-ip>:port/<token>/`。
+     */
+    public var url: String
+    public var port: UInt16
+    public var fileCount: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 二维码/链接内容：`http://<lan-ip>:port/<token>/`。
+         */url: String, port: UInt16, fileCount: UInt32) {
+        self.url = url
+        self.port = port
+        self.fileCount = fileCount
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ShareInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeShareInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ShareInfo {
+        return
+            try ShareInfo(
+                url: FfiConverterString.read(from: &buf), 
+                port: FfiConverterUInt16.read(from: &buf), 
+                fileCount: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ShareInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterUInt16.write(value.port, into: &buf)
+        FfiConverterUInt32.write(value.fileCount, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeShareInfo_lift(_ buf: RustBuffer) throws -> ShareInfo {
+    return try FfiConverterTypeShareInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeShareInfo_lower(_ value: ShareInfo) -> RustBuffer {
+    return FfiConverterTypeShareInfo.lower(value)
 }
 
 
@@ -2080,6 +3572,81 @@ public func FfiConverterTypeTransferState_lower(_ value: TransferState) -> RustB
 }
 
 
+
+/**
+ * Archive method for `compressZip`.
+ */
+
+public enum ZipMethod: Equatable, Hashable {
+    
+    /**
+     * 仅打包不压缩（最快，体积不变）。
+     */
+    case store
+    /**
+     * Deflate 压缩（默认）。
+     */
+    case deflate
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ZipMethod: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeZipMethod: FfiConverterRustBuffer {
+    typealias SwiftType = ZipMethod
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ZipMethod {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .store
+        
+        case 2: return .deflate
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ZipMethod, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .store:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .deflate:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZipMethod_lift(_ buf: RustBuffer) throws -> ZipMethod {
+    return try FfiConverterTypeZipMethod.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeZipMethod_lower(_ value: ZipMethod) -> RustBuffer {
+    return FfiConverterTypeZipMethod.lower(value)
+}
+
+
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -2123,6 +3690,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeLocalSendHandle: FfiConverterRustBuffer {
+    typealias SwiftType = LocalSendHandle?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeLocalSendHandle.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeLocalSendHandle.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -2205,6 +3796,56 @@ fileprivate struct FfiConverterSequenceTypeEntry: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFavoriteEntry: FfiConverterRustBuffer {
+    typealias SwiftType = [FavoriteEntry]
+
+    public static func write(_ value: [FavoriteEntry], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFavoriteEntry.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FavoriteEntry] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FavoriteEntry]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFavoriteEntry.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeLocalSendPeer: FfiConverterRustBuffer {
+    typealias SwiftType = [LocalSendPeer]
+
+    public static func write(_ value: [LocalSendPeer], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLocalSendPeer.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LocalSendPeer] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LocalSendPeer]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLocalSendPeer.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeMountInfo: FfiConverterRustBuffer {
     typealias SwiftType = [MountInfo]
 
@@ -2255,6 +3896,31 @@ fileprivate struct FfiConverterSequenceTypePendingTransfer: FfiConverterRustBuff
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeRecentOpen: FfiConverterRustBuffer {
+    typealias SwiftType = [RecentOpen]
+
+    public static func write(_ value: [RecentOpen], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeRecentOpen.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [RecentOpen] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [RecentOpen]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeRecentOpen.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeTransferSnapshot: FfiConverterRustBuffer {
     typealias SwiftType = [TransferSnapshot]
 
@@ -2292,6 +3958,39 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_superfiles_checksum_method_indexprogresslistener_on_progress() != 22385) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_indexprogresslistener_on_finished() != 10850) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_localsendhandle_announce() != 41748) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_localsendhandle_errors() != 65413) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_localsendhandle_info() != 14408) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_localsendhandle_is_running() != 64184) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_localsendhandle_peers() != 18788) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_localsendhandle_register_at() != 47843) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_localsendhandle_send() != 1083) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_localsendhandle_stop() != 47705) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_add_favorite() != 21707) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_cancel_transfer() != 18000) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2299,6 +3998,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_clear_index() != 49058) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_compress_zip() != 5552) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_create_dir() != 10638) {
@@ -2313,6 +4015,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_export_to_fd() != 242) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_favorites() != 27258) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_forget_transfer() != 12967) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2325,16 +4030,25 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_index_dir() != 61801) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_index_dir_with_progress() != 56713) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_join() != 17171) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_list() != 33029) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_list_cached() != 43391) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_local_send_handle() != 35404) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_mount_sftp() != 42724) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_superfiles_checksum_method_superfiles_mount_smb() != 46850) {
+    if (uniffi_superfiles_checksum_method_superfiles_mount_smb() != 54856) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_mount_webdav() != 36434) {
@@ -2349,7 +4063,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_read_bytes() != 59465) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_recent_files() != 31109) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_record_open() != 3400) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_remove() != 39390) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_remove_favorite() != 21818) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_rename() != 38276) {
@@ -2364,10 +4087,31 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_search() != 33314) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_smb_list_shares() != 16507) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_start_copy() != 21211) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_start_local_send() != 43733) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_start_move() != 1738) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_start_share() != 28344) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_start_transfer() != 19907) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_stat() != 17632) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_stop_local_send() != 55366) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_stop_share() != 5142) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_stream_url() != 9171) {
@@ -2388,10 +4132,15 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_write_bytes() != 42330) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_zipprogresslistener_on_progress() != 22129) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_constructor_superfiles_open() != 45316) {
         return InitializationResult.apiChecksumMismatch
     }
 
+    uniffiCallbackInitIndexProgressListener()
+    uniffiCallbackInitZipProgressListener()
     return InitializationResult.ok
 }()
 

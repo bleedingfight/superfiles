@@ -4,10 +4,12 @@
 //! SET_END_OF_FILE, so the POSIX-shaped `Backend` contract maps 1:1 and
 //! `can_random_write` is genuinely true (nice for resumable transfers).
 //!
-//! Cost model note: each operation opens a fresh handle (CREATE/CLOSE round
-//! trip, ~1 ms on LAN) instead of caching per-entry handles, which keeps the
-//! backend stateless per the contract and safe under concurrent transfers.
-//! Handle reuse/pooling is an explicit future optimization.
+//! Cost model: mutations still open a fresh handle per call, but **sequential
+//! reads cache one open handle per backend** (`read_cache` below) — the copy
+//! engine and the playback server read chunk-by-chunk in order, and paying a
+//! CREATE+CLOSE round trip per 256 KiB chunk was measured at ~5 MB/s on a
+//! LAN share that does 50+ MB/s with handle reuse. Cache invalidates on any
+//! mutation (write/truncate/remove/rename) and when the file id changes.
 
 use std::sync::Arc;
 
@@ -67,17 +69,38 @@ pub struct SmbBackend {
     host: String,
     share: String,
     auth: SmbAuth,
+    /// 顺序读句柄缓存（同一时刻至多一个文件）。复制/播放都是顺序读同一文件，
+    /// 跨 chunk 复用句柄省掉每块 2-3 个 SMB 往返。写入/删除/改名/截断即失效。
+    ///
+    /// 存 `Arc`：读路径只在「取/换句柄」时短暂持锁，实际读通过 Arc 副本在锁外
+    /// 进行——多个并发 read_range（引擎双路预取、播放 seek）互不阻塞。
+    read_cache: tokio::sync::Mutex<Option<Arc<CachedRead>>>,
+}
+
+struct CachedRead {
+    id: String,
+    res: Resource,
 }
 
 impl SmbBackend {
     /// Connect eagerly so bad credentials/hosts fail at mount time, not on
-    /// the first browse click.
-    pub async fn connect(host: &str, share: &str, auth: SmbAuth) -> Result<Self> {
+    /// the first browse click. `port=None` uses the SMB default (445).
+    pub async fn connect(
+        host: &str,
+        share: &str,
+        port: Option<u16>,
+        auth: SmbAuth,
+    ) -> Result<Self> {
+        let mut config = ClientConfig::default();
+        if let Some(port) = port {
+            config.connection.port = Some(port);
+        }
         let backend = Self {
-            client: Arc::new(Client::new(ClientConfig::default())),
+            client: Arc::new(Client::new(config)),
             host: host.trim_matches(['/', '\\']).to_string(),
             share: share.trim_matches(['/', '\\']).to_string(),
             auth,
+            read_cache: tokio::sync::Mutex::new(None),
         };
         backend.share_connect().await?;
         Ok(backend)
@@ -94,6 +117,15 @@ impl SmbBackend {
     /// Canonical id of the share root.
     pub fn root_id(&self) -> String {
         format!("{SCHEME}://{}/{}", self.host, self.share)
+    }
+
+    /// 读句柄缓存失效：写/删/改名/截断之后，缓存句柄可能指向已被替换的文件，
+    /// 必须先关掉；下次 read_range 会重新打开。
+    async fn invalidate_read_cache(&self) {
+        let mut cache = self.read_cache.lock().await;
+        if let Some(old) = cache.take() {
+            handle_of(&old.res).close().await.ok();
+        }
     }
 
     fn root_unc(&self) -> Result<UncPath> {
@@ -357,6 +389,7 @@ impl Backend for SmbBackend {
     }
 
     async fn remove(&self, id: &str, recursive: bool) -> Result<()> {
+        self.invalidate_read_cache().await;
         // Not retried end-to-end: after a stuck-but-successful delete the
         // retry would land on NotFound and report a false failure.
         let entry = self.stat(id).await?;
@@ -369,6 +402,7 @@ impl Backend for SmbBackend {
     }
 
     async fn rename(&self, id: &str, new_name: &str) -> Result<Entry> {
+        self.invalidate_read_cache().await;
         validate_name(new_name)?;
         // MS-FSCC 2.4.34.2: with root_directory = 0 the FileName is the full
         // share-relative path, NOT a basename. Same-parent only (contract §2:
@@ -397,31 +431,74 @@ impl Backend for SmbBackend {
             return Ok(Vec::new());
         }
         self.retry(|| async {
-            let res = self.open(id, read_access()).await?;
-            let Some(file) = res.as_file() else {
-                handle_of(&res).close().await.ok();
-                return Err(VfsError::Io(format!("not a file: {id}")));
+            // 句柄获取/轮换：仅在锁内做短操作；实际读在锁外（见下），
+            // 因此多个并发 read_range 可以同时飞在网络上（SMB2 同句柄并发读合法）。
+            let handle: Arc<CachedRead> = {
+                let mut cache = self.read_cache.lock().await;
+                match cache.as_ref() {
+                    Some(cached) if cached.id == id => cached.clone(),
+                    _ => {
+                        if let Some(old) = cache.take() {
+                            handle_of(&old.res).close().await.ok();
+                        }
+                        let res = self.open(id, read_access()).await?;
+                        if res.as_file().is_none() {
+                            handle_of(&res).close().await.ok();
+                            return Err(VfsError::Io(format!("not a file: {id}")));
+                        }
+                        let arc = Arc::new(CachedRead {
+                            id: id.to_string(),
+                            res,
+                        });
+                        *cache = Some(arc.clone());
+                        arc
+                    }
+                }
             };
+
             let mut buf = vec![0u8; len];
             let mut filled = 0usize;
-            while filled < len {
-                let n = file
-                    .read_at(&mut buf[filled..], offset + filled as u64)
-                    .await
-                    .map_err(map_err)?;
-                if n == 0 {
-                    break; // EOF: short read is allowed (contract §2)
+            let mut fault: Option<VfsError> = None;
+            match handle.res.as_file() {
+                Some(file) => {
+                    while filled < len {
+                        match file
+                            .read_at(&mut buf[filled..], offset + filled as u64)
+                            .await
+                        {
+                            Ok(0) => break, // EOF：短读合法（契约 §2）
+                            Ok(n) => filled += n,
+                            Err(err) => {
+                                fault = Some(map_err(err));
+                                break;
+                            }
+                        }
+                    }
                 }
-                filled += n;
+                None => fault = Some(VfsError::Io(format!("not a file: {id}"))),
+            }
+            if let Some(err) = fault {
+                // 句柄可能已半坏：仅当缓存里仍是这个句柄时换掉（避免误关并发读的新句柄）
+                let mut cache = self.read_cache.lock().await;
+                if cache
+                    .as_ref()
+                    .map(|c| Arc::ptr_eq(c, &handle))
+                    .unwrap_or(false)
+                {
+                    if let Some(old) = cache.take() {
+                        handle_of(&old.res).close().await.ok();
+                    }
+                }
+                return Err(err);
             }
             buf.truncate(filled);
-            file.handle().close().await.ok();
             Ok(buf)
         })
         .await
     }
 
     async fn write_range(&self, id: &str, offset: u64, data: &[u8]) -> Result<()> {
+        self.invalidate_read_cache().await;
         self.retry(|| async {
             // OpenIf + generic write: native POSIX-slice semantics, no
             // negotiation dance needed like on WebDAV.
@@ -460,6 +537,7 @@ impl Backend for SmbBackend {
     }
 
     async fn truncate(&self, id: &str, size: u64) -> Result<()> {
+        self.invalidate_read_cache().await;
         self.retry(|| async {
             let res = self.open(id, write_access()).await?;
             let Some(file) = res.as_file() else {
@@ -604,6 +682,7 @@ mod tests {
             host: "NAS.local".into(),
             share: "Media".into(),
             auth: SmbAuth::guest(),
+            read_cache: tokio::sync::Mutex::new(None),
         }
     }
 
@@ -648,4 +727,25 @@ mod tests {
             VfsError::InvalidName(_)
         ));
     }
+}
+
+/// 枚举某个 SMB 服务器上可访问的共享（连接 IPC$ 后走 srvsvc）。
+pub async fn list_shares(host: &str, port: Option<u16>, auth: SmbAuth) -> Result<Vec<String>> {
+    let mut config = ClientConfig::default();
+    if let Some(port) = port {
+        config.connection.port = Some(port);
+    }
+    let client = Client::new(config);
+    let host = host.trim_matches(['/', '\\']).to_string();
+    let ipc = smb::UncPath::ipc_share(&host).map_err(map_err)?;
+    client
+        .share_connect(&ipc, &auth.username, auth.password.clone())
+        .await
+        .map_err(map_err)?;
+    let shares = client.list_shares(&host).await.map_err(map_err)?;
+    Ok(shares
+        .into_iter()
+        .filter_map(|s| s.netname.as_ref().map(|n| n.to_string()))
+        .filter(|n| !n.eq_ignore_ascii_case("IPC$"))
+        .collect())
 }

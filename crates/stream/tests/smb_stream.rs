@@ -13,7 +13,7 @@ async fn stream_smb_file_over_loopback() {
     let user = std::env::var("SF_TEST_SMB_USER").unwrap();
     let pass = std::env::var("SF_TEST_SMB_PASS").unwrap();
 
-    let backend = SmbBackend::connect(&host, &share, SmbAuth::new(user, pass))
+    let backend = SmbBackend::connect(&host, &share, None, SmbAuth::new(user, pass))
         .await
         .unwrap();
     let root = backend.root_id();

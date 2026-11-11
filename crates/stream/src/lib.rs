@@ -9,6 +9,7 @@
 
 mod http;
 mod range;
+mod share;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -21,6 +22,8 @@ use vfs_core::Vfs;
 
 use http::{decode_id, encode_id, read_request, respond, status_for};
 use range::parse as parse_range;
+
+pub use share::ShareServer;
 
 /// One running server instance. Cheap to keep alive: the accept loop is a
 /// single task and idle servers own nothing but a socket.
@@ -82,7 +85,7 @@ impl StreamServer {
     }
 }
 
-fn make_token() -> String {
+pub(crate) fn make_token() -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
@@ -118,16 +121,28 @@ async fn serve_one(
         return Ok(());
     };
 
-    let entry = match vfs.stat(&id).await {
+    serve_entry(&vfs, &mut socket, &id, &req.method, req.range.as_deref()).await
+}
+
+/// Stat + range semantics + body streaming shared by the playback server
+/// and the LAN [`ShareServer`] (ADR 0005).
+pub(crate) async fn serve_entry(
+    vfs: &Vfs,
+    socket: &mut tokio::net::TcpStream,
+    id: &str,
+    method: &str,
+    range: Option<&str>,
+) -> std::io::Result<()> {
+    let entry = match vfs.stat(id).await {
         Ok(entry) => entry,
         Err(err) => {
             let (code, text) = status_for(&err);
-            respond(&mut socket, code, text, &[]).await?;
+            respond(&mut *socket, code, text, &[]).await?;
             return Ok(());
         }
     };
     if entry.is_dir() {
-        respond(&mut socket, 404, "Not Found", &[]).await?;
+        respond(&mut *socket, 404, "Not Found", &[]).await?;
         return Ok(());
     }
 
@@ -139,12 +154,12 @@ async fn serve_one(
         ("Cache-Control", "no-store".to_string()),
     ];
 
-    let body_range = match parse_range(req.range.as_deref(), size) {
+    let body_range = match parse_range(range, size) {
         None => None,
         Some(Some(r)) => Some(r),
         Some(None) => {
             headers.push(("Content-Range", format!("bytes */{size}")));
-            respond(&mut socket, 416, "Range Not Satisfiable", &refs(&headers)).await?;
+            respond(&mut *socket, 416, "Range Not Satisfiable", &refs(&headers)).await?;
             return Ok(());
         }
     };
@@ -161,22 +176,22 @@ async fn serve_one(
     };
     let body_len = if size == 0 { 0 } else { end - start + 1 };
     headers.push(("Content-Length", body_len.to_string()));
-    respond(&mut socket, status, text, &refs(&headers)).await?;
+    respond(&mut *socket, status, text, &refs(&headers)).await?;
 
-    if req.method == "HEAD" || body_len == 0 {
+    if method == "HEAD" || body_len == 0 {
         return Ok(());
     }
 
     let mut offset = start;
     while offset <= end {
         let want = ((end - offset + 1) as usize).min(vfs_core::DEFAULT_CHUNK_SIZE);
-        let chunk = match vfs.read_range(&id, offset, want).await {
+        let chunk = match vfs.read_range(id, offset, want).await {
             Ok(c) if !c.is_empty() => c,
             Ok(_) => break,  // file shrank mid-stream
             Err(_) => break, // socket is our only error channel at this point
         };
         let written = chunk.len() as u64;
-        if tokio::io::AsyncWriteExt::write_all(&mut socket, &chunk)
+        if tokio::io::AsyncWriteExt::write_all(socket, &chunk)
             .await
             .is_err()
         {

@@ -28,6 +28,7 @@
 | 后台下载 | 仅 HTTP 类后端可用 `URLSession` background；SMB/SFTP **无法真正后台**，只能前台 + `BGProcessingTask` 收尾 |
 | 相册媒体 | PhotoKit（读取），导出走 Share/保存到相册 |
 | 凭据 | Keychain；File Provider 与主 App 通过 App Group 共享容器 |
+| iPad 界面 | `NavigationSplitView` 三栏（位置侧栏 / 文件列表 / 详情）；图片与视频内联预览，其余 QuickLook；复制/移动目标选择器 + 传输进度 |
 
 产品定位：**「文件与云存储浏览器 + 系统文件提供者」**，不要宣称「系统文件管理器」。
 
@@ -43,6 +44,13 @@
 | 局域网发现 | `NsdManager`（mDNS）+ WS-Discovery 找 SMB |
 | 播放 | Media3/ExoPlayer，直接使用本地回环 HTTP URL |
 | TV | 同一 APK，`LEANBACK_LAUNCHER`（已加）；焦点图谱、16:9 安全区、字号 ≥20sp |
+
+### 3.1 多语言（Android）
+
+- 默认资源 = 英文（`values/strings.xml`），简体中文在 `values-zh/strings.xml`；非中/英文系统回退英文。
+- `res/xml/locales_config.xml` 声明 `en` / `zh-Hans`，Android 13+ 可在「设置 → App → 语言」单独切换。
+- 文案统一 `L10n.t(R.string.…)`（Application 上下文初始化），Compose / ViewModel / 前台服务/通知共用；带参数用 `%1$s` 占位。
+- 新增文案：两套 XML 同步加同名字符串（key 为内容哈希/递增编号），中文自然语言搜索的关键词表（`NaturalLanguageQueryParser`）是解析器数据，不参与 UI 翻译。
 
 ## 4. 鸿蒙（规划）
 

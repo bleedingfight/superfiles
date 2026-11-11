@@ -16,4 +16,10 @@ object Dimens {
 
     /** FileRow 图标槽宽度 */
     val RowIconSlot = 28.dp
+
+    // 圆角刻度（tokens.json radius；docs/06 §2.5）
+    val RadiusS = 10.dp
+    val RadiusM = 14.dp
+    val RadiusL = 20.dp
+    val RadiusPill = 999.dp
 }

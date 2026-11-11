@@ -18,7 +18,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use pinyin::ToPinyin;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use vfs_core::{Entry, EntryKind, Result, VfsError};
 
 mod transfers;
@@ -104,51 +104,287 @@ impl Index {
             .map_err(db_err)?;
         conn.execute_batch(transfers::TRANSFERS_SCHEMA)
             .map_err(db_err)?;
-        // Rebuild the FTS table when it is out of sync with entries (e.g.
-        // rows written by the LIKE-based version). Counts are reliable
-        // because id is the primary key on both sides.
-        let needs_rebuild: bool = conn
-            .query_row(
-                "SELECT (SELECT COUNT(*) FROM entries) != (SELECT COUNT(*) FROM entries_fts)",
-                [],
-                |row| row.get(0),
+        // Schema v1 (moving tasks): older DBs predate the is_move column.
+        if !has_column(&conn, "transfers", "is_move")? {
+            conn.execute_batch(
+                "ALTER TABLE transfers ADD COLUMN is_move INTEGER NOT NULL DEFAULT 0",
             )
             .map_err(db_err)?;
-        if !needs_rebuild {
-            return Ok(());
         }
-        let rows: Vec<(String, String)> = {
-            let mut stmt = conn
-                .prepare("SELECT id, name FROM entries")
+        // 最近打开（首页「最近打开」数据源；primary key 保证同一路径只留最新一条）
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS recent_opens (
+                id        TEXT PRIMARY KEY,
+                opened_ms INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_recent_opens_time ON recent_opens(opened_ms);
+            "#,
+        )
+        .map_err(db_err)?;
+        // 增量扫描账本：每个目录上次扫描时的 mtime。mtime 未变 = 子树无增删，
+        // 下次扫描直接跳过整棵子树（locate 式增量；文件内容原地修改不在覆盖范围）。
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS dir_states (
+                id       TEXT PRIMARY KEY,
+                mtime_ms INTEGER NOT NULL
+            );
+            "#,
+        )
+        .map_err(db_err)?;
+        // 收藏（快捷访问标记，纯 UI 语义、零扫描成本）
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS favorites (
+                id       TEXT PRIMARY KEY,
+                added_ms INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_favorites_time ON favorites(added_ms);
+            "#,
+        )
+        .map_err(db_err)?;
+        // 目录列举缓存的「上次更新」账本：每次 list()/扫描成功落索引时记录，
+        // 离线浏览用「缓存条目 + 该时间」展示过期标记（M1 离线浏览）。
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS list_states (
+                id           TEXT PRIMARY KEY,
+                listed_at_ms INTEGER NOT NULL
+            );
+            "#,
+        )
+        .map_err(db_err)?;
+        // Rebuild the FTS table when it is out of sync with entries (e.g.
+        // rows written by the LIKE-based version), and once for the rowid
+        // migration below. Counts are reliable because id is UNIQUE on both
+        // sides.
+        let fts_counts: (i64, i64) = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM entries), (SELECT COUNT(*) FROM entries_fts)",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(db_err)?;
+        // schema v1: FTS rows share `entries.rowid`. Before this, FTS owned an
+        // independent rowid and every upsert did `DELETE ... WHERE id = ?` on
+        // an UNINDEXED column — a full scan, i.e. O(N) per row and O(N²) per
+        // listing (measured: 5000 entries 3.3s → 47ms after the fix).
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(db_err)?;
+        if fts_counts.0 != fts_counts.1 || version < 1 {
+            rebuild_fts(&mut conn)?;
+            conn.pragma_update(None, "user_version", 1)
                 .map_err(db_err)?;
-            let rows = stmt
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-                .map_err(db_err)?;
-            let mut collected = Vec::new();
-            for row in rows {
-                collected.push(row.map_err(db_err)?);
-            }
-            collected
-        };
-        let tx = conn.transaction().map_err(db_err)?;
-        tx.execute("DELETE FROM entries_fts", []).map_err(db_err)?;
-        {
-            let mut insert = tx
-                .prepare("INSERT INTO entries_fts (id, name, pinyin) VALUES (?1, ?2, ?3)")
-                .map_err(db_err)?;
-            for (id, name) in &rows {
-                insert
-                    .execute(params![id, name, pinyin_index(name)])
-                    .map_err(db_err)?;
-            }
         }
-        tx.commit().map_err(db_err)
+        Ok(())
     }
 
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
-        self.conn
-            .lock()
-            .map_err(|_| VfsError::Io("index lock poisoned".into()))
+        // 锁中毒（持锁线程 panic 过）不等于数据损坏：SQLite 自身事务保证一致性，
+        // 残留 guard 只是被中断——直接取回继续用。移动端进程随时可能被系统杀，
+        // 把「锁中毒」升级成 panic 是拿稳定性换洁癖（2026-11 真机 SIGABRT 教训）。
+        self.conn.lock().or_else(|e| Ok(e.into_inner()))
+    }
+
+    /// Record that the user just opened `id`（同一路径 upsert，仅保留最新时间）。
+    pub fn record_open(&self, id: &str, opened_ms: u64) -> Result<()> {
+        let conn = self.lock()?;
+        conn.execute(
+            "INSERT INTO recent_opens (id, opened_ms) VALUES (?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET opened_ms = excluded.opened_ms",
+            params![id, opened_ms],
+        )
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    /// Most recently opened ids, newest first. Callers resolve entries via
+    /// the vfs and simply skip paths that no longer exist.
+    pub fn recent_opens(&self, limit: u32) -> Result<Vec<(String, u64)>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare("SELECT id, opened_ms FROM recent_opens ORDER BY opened_ms DESC LIMIT ?1")
+            .map_err(db_err)?;
+        let rows = stmt
+            .query_map(params![limit], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?))
+            })
+            .map_err(db_err)?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(db_err)
+    }
+
+    // ---- 收藏（纯标记） ----
+
+    pub fn add_favorite(&self, id: &str, added_ms: u64) -> Result<()> {
+        let conn = self.lock()?;
+        conn.execute(
+            "INSERT INTO favorites (id, added_ms) VALUES (?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET added_ms = excluded.added_ms",
+            params![id, added_ms],
+        )
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    pub fn remove_favorite(&self, id: &str) -> Result<()> {
+        let conn = self.lock()?;
+        conn.execute("DELETE FROM favorites WHERE id = ?1", params![id])
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    pub fn favorite_ids(&self, limit: u32) -> Result<Vec<(String, u64)>> {
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare("SELECT id, added_ms FROM favorites ORDER BY added_ms DESC LIMIT ?1")
+            .map_err(db_err)?;
+        let rows = stmt
+            .query_map(params![limit], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?))
+            })
+            .map_err(db_err)?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(db_err)
+    }
+
+    /// 上次扫描该目录时记录的 mtime（增量判定用；无记录 = 首次扫描）。
+    pub fn dir_state_mtime(&self, id: &str) -> Result<Option<i64>> {
+        use rusqlite::OptionalExtension;
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare("SELECT mtime_ms FROM dir_states WHERE id = ?1")
+            .map_err(db_err)?;
+        stmt.query_row(params![id], |row| row.get::<_, i64>(0))
+            .optional()
+            .map_err(db_err)
+    }
+
+    pub fn save_dir_state(&self, id: &str, mtime_ms: i64) -> Result<()> {
+        let conn = self.lock()?;
+        conn.execute(
+            "INSERT INTO dir_states (id, mtime_ms) VALUES (?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET mtime_ms = excluded.mtime_ms",
+            params![id, mtime_ms],
+        )
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    // ---- 目录列举缓存（M1 离线浏览） ----
+
+    /// 记录一次目录列举时间（离线缓存的「上次更新」标记）。
+    pub fn record_listing(&self, dir: &str, listed_at_ms: i64) -> Result<()> {
+        let conn = self.lock()?;
+        conn.execute(
+            "INSERT INTO list_states (id, listed_at_ms) VALUES (?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET listed_at_ms = excluded.listed_at_ms",
+            params![dir, listed_at_ms],
+        )
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    /// 该目录最近一次成功列举的时间（无记录 = 从未缓存）。
+    pub fn listed_at(&self, dir: &str) -> Result<Option<i64>> {
+        use rusqlite::OptionalExtension;
+        let conn = self.lock()?;
+        let mut stmt = conn
+            .prepare("SELECT listed_at_ms FROM list_states WHERE id = ?1")
+            .map_err(db_err)?;
+        stmt.query_row(params![dir], |row| row.get::<_, i64>(0))
+            .optional()
+            .map_err(db_err)
+    }
+
+    /// 索引中 `parent` 的直接子项（离线浏览数据源；目录优先、名称升序）。
+    pub fn children_of(&self, parent: &str) -> Result<Vec<Entry>> {
+        let conn = self.lock()?;
+        let sql = format!(
+            "SELECT {ENTRY_COLUMNS}
+             FROM entries e
+             WHERE e.parent = ?1
+             ORDER BY e.kind DESC, e.name COLLATE NOCASE ASC"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+        let rows = stmt
+            .query_map(params![parent], row_to_entry)
+            .map_err(db_err)?;
+        collect_rows(rows)
+    }
+
+    /// 删除对账：`parent` 下本轮未再出现的条目（含其整棵子树与 FTS 行）。
+    /// 返回删除的条目数。目录 mtime 变化才可能触发（见 FFI 增量逻辑）。
+    pub fn prune_children(&self, parent: &str, keep_ids: &[String]) -> Result<u64> {
+        let mut conn = self.lock()?;
+        let tx = conn.transaction().map_err(db_err)?;
+        tx.execute(
+            "CREATE TEMP TABLE IF NOT EXISTS keep_ids (id TEXT PRIMARY KEY)",
+            [],
+        )
+        .map_err(db_err)?;
+        tx.execute("DELETE FROM keep_ids", []).map_err(db_err)?;
+        {
+            let mut ins = tx
+                .prepare("INSERT OR IGNORE INTO keep_ids (id) VALUES (?1)")
+                .map_err(db_err)?;
+            for id in keep_ids {
+                ins.execute(params![id]).map_err(db_err)?;
+            }
+        }
+        // 1) 找出该目录下已消失的直接子项
+        let stale: Vec<String> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT id FROM entries
+                     WHERE parent = ?1 AND id NOT IN (SELECT id FROM keep_ids)",
+                )
+                .map_err(db_err)?;
+            let rows = stmt
+                .query_map(params![parent], |row| row.get::<_, String>(0))
+                .map_err(db_err)?;
+            rows.collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(db_err)?
+        };
+        let mut removed = 0u64;
+        for id in &stale {
+            // 2) 级联删除该子项及其整棵子树（id 前缀 = 路径前缀）
+            let mut stmt = tx
+                .prepare(
+                    "SELECT id FROM entries
+                     WHERE id = ?1 OR substr(id, 1, length(?1) + 1) = ?1 || '/'",
+                )
+                .map_err(db_err)?;
+            let subtree: Vec<String> = stmt
+                .query_map(params![id], |row| row.get::<_, String>(0))
+                .map_err(db_err)?
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(db_err)?;
+            drop(stmt);
+            for gone in subtree {
+                let rowid: Option<i64> = tx
+                    .query_row(
+                        "SELECT rowid FROM entries WHERE id = ?1",
+                        params![gone],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .map_err(db_err)?;
+                tx.execute("DELETE FROM entries WHERE id = ?1", params![gone])
+                    .map_err(db_err)?;
+                if let Some(rowid) = rowid {
+                    tx.execute("DELETE FROM entries_fts WHERE rowid = ?1", params![rowid])
+                        .map_err(db_err)?;
+                }
+                tx.execute("DELETE FROM dir_states WHERE id = ?1", params![gone])
+                    .map_err(db_err)?;
+                removed += 1;
+            }
+        }
+        tx.commit().map_err(db_err)?;
+        Ok(removed)
     }
 
     /// Insert or update a single entry under the default (local) source.
@@ -175,17 +411,30 @@ impl Index {
         let tx = conn.transaction().map_err(db_err)?;
         {
             let mut upsert_stmt = tx.prepare(UPSERT_SQL).map_err(db_err)?;
+            let mut rowid_stmt = tx
+                .prepare("SELECT rowid FROM entries WHERE id = ?1")
+                .map_err(db_err)?;
             let mut fts_delete = tx
-                .prepare("DELETE FROM entries_fts WHERE id = ?1")
+                .prepare("DELETE FROM entries_fts WHERE rowid = ?1")
                 .map_err(db_err)?;
             let mut fts_insert = tx
-                .prepare("INSERT INTO entries_fts (id, name, pinyin) VALUES (?1, ?2, ?3)")
+                .prepare("INSERT INTO entries_fts (rowid, id, name, pinyin) VALUES (?1, ?2, ?3, ?4)")
                 .map_err(db_err)?;
             for entry in entries {
                 bind_upsert(&mut upsert_stmt, source, entry)?;
-                fts_delete.execute(params![entry.id]).map_err(db_err)?;
+                // FTS rows are keyed by entries.rowid: point delete + insert,
+                // no full scan (see rebuild_fts for the migration).
+                let rowid: i64 = rowid_stmt
+                    .query_row(params![entry.id], |row| row.get(0))
+                    .map_err(db_err)?;
+                fts_delete.execute(params![rowid]).map_err(db_err)?;
                 fts_insert
-                    .execute(params![entry.id, entry.name, pinyin_index(&entry.name)])
+                    .execute(params![
+                        rowid,
+                        entry.id,
+                        entry.name,
+                        pinyin_index(&entry.name)
+                    ])
                     .map_err(db_err)?;
             }
         }
@@ -195,10 +444,18 @@ impl Index {
     pub fn remove(&self, id: &str) -> Result<()> {
         let mut conn = self.lock()?;
         let tx = conn.transaction().map_err(db_err)?;
+        let rowid: Option<i64> = tx
+            .query_row("SELECT rowid FROM entries WHERE id = ?1", params![id], |row| {
+                row.get(0)
+            })
+            .optional()
+            .map_err(db_err)?;
         tx.execute("DELETE FROM entries WHERE id = ?1", params![id])
             .map_err(db_err)?;
-        tx.execute("DELETE FROM entries_fts WHERE id = ?1", params![id])
-            .map_err(db_err)?;
+        if let Some(rowid) = rowid {
+            tx.execute("DELETE FROM entries_fts WHERE rowid = ?1", params![rowid])
+                .map_err(db_err)?;
+        }
         tx.commit().map_err(db_err)
     }
 
@@ -328,15 +585,59 @@ fn upsert_entry(conn: &Connection, source: &str, entry: &Entry) -> Result<()> {
         source,
         entry,
     )?;
-    // Keep the FTS row in sync by re-indexing the name.
-    conn.execute("DELETE FROM entries_fts WHERE id = ?1", params![entry.id])
+    // Keep the FTS row in sync by re-indexing the name. Deleting by `rowid`
+    // is a point lookup; `id` is UNINDEXED and would scan the whole table.
+    let rowid: i64 = conn
+        .query_row(
+            "SELECT rowid FROM entries WHERE id = ?1",
+            params![entry.id],
+            |row| row.get(0),
+        )
+        .map_err(db_err)?;
+    conn.execute("DELETE FROM entries_fts WHERE rowid = ?1", params![rowid])
         .map_err(db_err)?;
     conn.execute(
-        "INSERT INTO entries_fts (id, name, pinyin) VALUES (?1, ?2, ?3)",
-        params![entry.id, entry.name, pinyin_index(&entry.name)],
+        "INSERT INTO entries_fts (rowid, id, name, pinyin) VALUES (?1, ?2, ?3, ?4)",
+        params![rowid, entry.id, entry.name, pinyin_index(&entry.name)],
     )
     .map_err(db_err)?;
     Ok(())
+}
+
+/// Rebuild the whole FTS table with `rowid` aligned to `entries.rowid`
+/// (schema v1). Regenerating from `entries` also repairs entries/FTS drift.
+fn rebuild_fts(conn: &mut Connection) -> Result<()> {
+    let rows: Vec<(i64, String, String)> = {
+        let mut stmt = conn
+            .prepare("SELECT rowid, id, name FROM entries")
+            .map_err(db_err)?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .map_err(db_err)?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(db_err)?
+    };
+    let tx = conn.transaction().map_err(db_err)?;
+    tx.execute("DROP TABLE IF EXISTS entries_fts", [])
+        .map_err(db_err)?;
+    tx.execute(
+        "CREATE VIRTUAL TABLE entries_fts USING fts5(
+            id UNINDEXED, name, pinyin, tokenize = 'trigram'
+        )",
+        [],
+    )
+    .map_err(db_err)?;
+    {
+        let mut insert = tx
+            .prepare("INSERT INTO entries_fts (rowid, id, name, pinyin) VALUES (?1, ?2, ?3, ?4)")
+            .map_err(db_err)?;
+        for (rowid, id, name) in &rows {
+            insert
+                .execute(params![rowid, id, name, pinyin_index(name)])
+                .map_err(db_err)?;
+        }
+    }
+    tx.commit().map_err(db_err)
 }
 
 fn search_fts(
@@ -502,6 +803,95 @@ fn db_err(err: rusqlite::Error) -> VfsError {
 mod tests {
     use super::*;
 
+    #[test]
+    fn favorites_roundtrip() {
+        let index = Index::open_in_memory().unwrap();
+        index.add_favorite("/a", 100).unwrap();
+        index.add_favorite("/b", 200).unwrap();
+        index.add_favorite("/a", 300).unwrap(); // 重复收藏 → 更新时间
+        let ids = index.favorite_ids(10).unwrap();
+        assert_eq!(ids, vec![("/a".to_string(), 300), ("/b".to_string(), 200)]);
+        index.remove_favorite("/a").unwrap();
+        assert_eq!(index.favorite_ids(10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn prune_children_removes_stale_subtrees() {
+        fn at(id: &str, parent: &str, name: &str) -> Entry {
+            let mut e = entry(id, name);
+            e.parent = Some(parent.to_string());
+            e
+        }
+        let index = Index::open_in_memory().unwrap();
+        index.upsert(&at("/a", "/", "a")).unwrap();
+        index.upsert(&at("/a/keep.txt", "/a", "keep.txt")).unwrap();
+        index.upsert(&at("/a/gone", "/a", "gone")).unwrap();
+        index
+            .upsert(&at("/a/gone/deep.txt", "/a/gone", "deep.txt"))
+            .unwrap();
+        let keep = vec!["/a/keep.txt".to_string()];
+        let removed = index.prune_children("/a", &keep).unwrap();
+        assert_eq!(removed, 2, "gone + deep.txt should be pruned");
+        assert!(index
+            .search("keep", 10)
+            .unwrap()
+            .iter()
+            .any(|e| e.name == "keep.txt"));
+        assert!(!index
+            .search("deep", 10)
+            .unwrap()
+            .iter()
+            .any(|e| e.name == "deep.txt"));
+    }
+
+    #[test]
+    fn children_of_and_listed_at_drive_offline_browsing() {
+        fn at(id: &str, parent: &str, name: &str, kind: EntryKind) -> Entry {
+            let mut e = entry(id, name);
+            e.parent = Some(parent.to_string());
+            e.kind = kind;
+            e
+        }
+        let index = Index::open_in_memory().unwrap();
+        assert!(index.children_of("/a").unwrap().is_empty());
+        assert_eq!(index.listed_at("/a").unwrap(), None);
+
+        index
+            .upsert_all(&[
+                at("/a", "/", "a", EntryKind::Directory),
+                at("/a/zeta.txt", "/a", "zeta.txt", EntryKind::File),
+                at("/a/sub", "/a", "sub", EntryKind::Directory),
+                at("/a/alpha.txt", "/a", "alpha.txt", EntryKind::File),
+            ])
+            .unwrap();
+        index.record_listing("/a", 1_700_000_000_000).unwrap();
+
+        // 目录优先、名称升序；不含子目录内的深层条目。
+        let names: Vec<String> = index
+            .children_of("/a")
+            .unwrap()
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(names, vec!["sub", "alpha.txt", "zeta.txt"]);
+        assert_eq!(index.listed_at("/a").unwrap(), Some(1_700_000_000_000));
+
+        // 重复列举只保留最新时间。
+        index.record_listing("/a", 1_700_000_100_000).unwrap();
+        assert_eq!(index.listed_at("/a").unwrap(), Some(1_700_000_100_000));
+    }
+
+    #[test]
+    fn recent_opens_are_ordered_and_deduplicated() {
+        let index = Index::open_in_memory().unwrap();
+        index.record_open("/a", 100).unwrap();
+        index.record_open("/b", 200).unwrap();
+        index.record_open("/a", 300).unwrap(); // 同一路径只保留最新时间
+        let rows = index.recent_opens(10).unwrap();
+        assert_eq!(rows, vec![("/a".to_string(), 300), ("/b".to_string(), 200)]);
+        assert_eq!(index.recent_opens(1).unwrap().len(), 1);
+    }
+
     fn entry(id: &str, name: &str) -> Entry {
         Entry {
             id: id.to_string(),
@@ -653,6 +1043,27 @@ mod tests {
             assert!(hits.is_empty(), "{attack} matched unexpectedly");
         }
         assert_eq!(index.count().unwrap(), 5);
+    }
+
+    #[test]
+    fn lock_survives_poisoning() {
+        // 模拟「持锁线程被 panic 打断」后的锁中毒：老实现下此后所有 DB 操作
+        // 永久失败（移动端进程被 kill 场景的同类形态）。
+        let index = Index::open_in_memory().unwrap();
+        struct SendPtr(usize);
+        unsafe impl Send for SendPtr {}
+        let ptr = SendPtr(&index as *const Index as usize);
+        let handle = std::thread::spawn(move || {
+            let index = unsafe { &*(ptr.0 as *const Index) };
+            let conn = index.conn.lock();
+            let _guard = conn.unwrap_or_else(|e| e.into_inner());
+            panic!("boom while holding the index lock");
+        });
+        assert!(handle.join().is_err()); // 线程确实 panic 了（锁已中毒）
+
+        // 锁中毒后必须还能正常读写（SQLite 事务本身保证一致性）。
+        index.upsert(&entry("/a.txt", "a.txt")).unwrap();
+        assert_eq!(index.search("a.txt", 10).unwrap().len(), 1);
     }
 
     #[test]

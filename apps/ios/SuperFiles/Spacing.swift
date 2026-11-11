@@ -15,4 +15,10 @@ enum Spacing {
 
     /// EmptyState 弱化图标尺寸（docs/06-design-system.md §4）
     static let emptyIconSize: CGFloat = 40
+
+    // 圆角刻度（tokens.json radius；docs/06 §2.5）
+    static let radiusS: CGFloat = 10
+    static let radiusM: CGFloat = 14
+    static let radiusL: CGFloat = 20
+    static let radiusPill: CGFloat = 999
 }
