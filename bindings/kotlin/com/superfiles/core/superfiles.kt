@@ -31,6 +31,13 @@ import java.nio.charset.CodingErrorAction
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 // This is a helper for safely working with byte buffers returned from the Rust code.
 // A rust-owned buffer is represented by its capacity, its current length, and a
@@ -651,7 +658,7 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
     fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultVoid.UniffiByValue,)
 }
 internal interface UniffiCallbackInterfaceIndexProgressListenerMethod0 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`directories`: Long,`entries`: Long,`fraction`: Float,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+    fun callback(`uniffiHandle`: Long,`directories`: Long,`entries`: Long,`fraction`: Double,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceIndexProgressListenerMethod1 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`total`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
@@ -755,6 +762,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_clear_index_prefix(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_completed_transfers(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_compress_zip(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_count_by_exts(
@@ -778,6 +787,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_superfiles_checksum_method_superfiles_index_count(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_index_dir(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_index_dir_background(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_index_dir_full_with_progress(
     ): Int
@@ -907,7 +918,7 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_superfiles_fn_init_callback_vtable_indexprogresslistener(`vtable`: UniffiVTableCallbackInterfaceIndexProgressListener,
     ): Unit
-    external fun uniffi_superfiles_fn_method_indexprogresslistener_on_progress(`ptr`: Long,`directories`: Long,`entries`: Long,`fraction`: Float,uniffi_out_err: UniffiRustCallStatus, 
+    external fun uniffi_superfiles_fn_method_indexprogresslistener_on_progress(`ptr`: Long,`directories`: Long,`entries`: Long,`fraction`: Double,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun uniffi_superfiles_fn_method_indexprogresslistener_on_finished(`ptr`: Long,`total`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
@@ -947,6 +958,8 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_clear_index_prefix(`ptr`: Long,`prefix`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
+    external fun uniffi_superfiles_fn_method_superfiles_completed_transfers(`ptr`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_compress_zip(`ptr`: Long,`sources`: RustBuffer.ByValue,`destDir`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,`method`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_count_by_exts(`ptr`: Long,`exts`: RustBuffer.ByValue,`includeHidden`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -971,6 +984,8 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_superfiles_fn_method_superfiles_index_dir(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
+    external fun uniffi_superfiles_fn_method_superfiles_index_dir_background(`ptr`: Long,`id`: RustBuffer.ByValue,`listener`: Long,`full`: Byte,
+    ): Long
     external fun uniffi_superfiles_fn_method_superfiles_index_dir_full_with_progress(`ptr`: Long,`id`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     external fun uniffi_superfiles_fn_method_superfiles_index_dir_with_progress(`ptr`: Long,`id`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1194,7 +1209,7 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
-    if ((lib.uniffi_superfiles_checksum_method_indexprogresslistener_on_progress() and 0xFFFF) != 22385) {
+    if ((lib.uniffi_superfiles_checksum_method_indexprogresslistener_on_progress() and 0xFFFF) != 60019) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_indexprogresslistener_on_finished() and 0xFFFF) != 10850) {
@@ -1239,6 +1254,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_clear_index_prefix() and 0xFFFF) != 57166) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_completed_transfers() and 0xFFFF) != 23493) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_compress_zip() and 0xFFFF) != 5552) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1273,6 +1291,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_index_dir() and 0xFFFF) != 61801) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_index_dir_background() and 0xFFFF) != 50984) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_index_dir_full_with_progress() and 0xFFFF) != 39911) {
@@ -1365,7 +1386,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_root_id() and 0xFFFF) != 46979) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_superfiles_checksum_method_superfiles_search() and 0xFFFF) != 33314) {
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_search() and 0xFFFF) != 45400) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_smb_list_shares() and 0xFFFF) != 16507) {
@@ -1438,6 +1459,46 @@ public fun uniffiEnsureInitialized() {
 }
 
 // Async support
+// Async return type handlers
+
+internal const val UNIFFI_RUST_FUTURE_POLL_READY = 0.toByte()
+internal const val UNIFFI_RUST_FUTURE_POLL_WAKE = 1.toByte()
+
+internal val uniffiContinuationHandleMap = UniffiHandleMap<CancellableContinuation<Byte>>()
+
+// FFI type for Rust future continuations
+internal object uniffiRustFutureContinuationCallbackImpl: UniffiRustFutureContinuationCallback {
+    override fun callback(data: Long, pollResult: Byte) {
+        uniffiContinuationHandleMap.remove(data).resume(pollResult)
+    }
+}
+
+internal suspend fun<T, F, E: kotlin.Exception> uniffiRustCallAsync(
+    rustFuture: Long,
+    pollFunc: (Long, UniffiRustFutureContinuationCallback, Long) -> Unit,
+    completeFunc: (Long, UniffiRustCallStatus) -> F,
+    freeFunc: (Long) -> Unit,
+    liftFunc: (F) -> T,
+    errorHandler: UniffiRustCallStatusErrorHandler<E>
+): T {
+    try {
+        do {
+            val pollResult = suspendCancellableCoroutine<Byte> { continuation ->
+                pollFunc(
+                    rustFuture,
+                    uniffiRustFutureContinuationCallbackImpl,
+                    uniffiContinuationHandleMap.insert(continuation)
+                )
+            }
+        } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
+
+        return liftFunc(
+            uniffiRustCallWithError(errorHandler, { status -> completeFunc(rustFuture, status) })
+        )
+    } finally {
+        freeFunc(rustFuture)
+    }
+}
 
 // Public interface members begin here.
 
@@ -1735,23 +1796,23 @@ public object FfiConverterLong: FfiConverter<Long, Long> {
 /**
  * @suppress
  */
-public object FfiConverterFloat: FfiConverter<Float, Float> {
-    override fun lift(value: Float): Float {
+public object FfiConverterDouble: FfiConverter<Double, Double> {
+    override fun lift(value: Double): Double {
         return value
     }
 
-    override fun read(buf: ByteBuffer): Float {
-        return buf.getFloat()
+    override fun read(buf: ByteBuffer): Double {
+        return buf.getDouble()
     }
 
-    override fun lower(value: Float): Float {
+    override fun lower(value: Double): Double {
         return value
     }
 
-    override fun allocationSize(value: Float) = 4UL
+    override fun allocationSize(value: Double) = 8UL
 
-    override fun write(value: Float, buf: ByteBuffer) {
-        buf.putFloat(value)
+    override fun write(value: Double, buf: ByteBuffer) {
+        buf.putDouble(value)
     }
 }
 
@@ -1956,7 +2017,7 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
  */
 public interface IndexProgressListener {
     
-    fun `onProgress`(`directories`: kotlin.ULong, `entries`: kotlin.ULong, `fraction`: kotlin.Float)
+    fun `onProgress`(`directories`: kotlin.ULong, `entries`: kotlin.ULong, `fraction`: kotlin.Double)
     
     fun `onFinished`(`total`: kotlin.ULong)
     
@@ -2068,7 +2129,7 @@ open class IndexProgressListenerImpl: Disposable, AutoCloseable, IndexProgressLi
         }
     }
 
-    override fun `onProgress`(`directories`: kotlin.ULong, `entries`: kotlin.ULong, `fraction`: kotlin.Float)
+    override fun `onProgress`(`directories`: kotlin.ULong, `entries`: kotlin.ULong, `fraction`: kotlin.Double)
         = 
     callWithHandle {
     uniffiRustCall() { _status ->
@@ -2077,7 +2138,7 @@ open class IndexProgressListenerImpl: Disposable, AutoCloseable, IndexProgressLi
         
         FfiConverterULong.lower(`directories`),
         FfiConverterULong.lower(`entries`),
-        FfiConverterFloat.lower(`fraction`),_status)
+        FfiConverterDouble.lower(`fraction`),_status)
 }
     }
     
@@ -2115,13 +2176,13 @@ open class IndexProgressListenerImpl: Disposable, AutoCloseable, IndexProgressLi
 // Put the implementation in an object so we don't pollute the top-level namespace
 internal object uniffiCallbackInterfaceIndexProgressListener {
     internal object `onProgress`: UniffiCallbackInterfaceIndexProgressListenerMethod0 {
-        override fun callback(`uniffiHandle`: Long,`directories`: Long,`entries`: Long,`fraction`: Float,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+        override fun callback(`uniffiHandle`: Long,`directories`: Long,`entries`: Long,`fraction`: Double,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeIndexProgressListener.handleMap.get(uniffiHandle)
             val makeCall = { ->
                 uniffiObj.`onProgress`(
                     FfiConverterULong.lift(`directories`),
                     FfiConverterULong.lift(`entries`),
-                    FfiConverterFloat.lift(`fraction`),
+                    FfiConverterDouble.lift(`fraction`),
                 )
             }
             val writeReturn = { _: Unit -> Unit }
@@ -2705,6 +2766,15 @@ public interface SuperFilesInterface {
     fun `clearIndexPrefix`(`prefix`: kotlin.String): kotlin.ULong
     
     /**
+     * Recently completed jobs, newest first — the storage-cleanup page
+     * lists what past transfers landed on this device so the user can
+     * reclaim space (delete actual destination files, then the row).
+     * Only jobs whose destination was this device's local root make
+     * sense for cleanup, so remote-dst jobs are filtered out there.
+     */
+    fun `completedTransfers`(`limit`: kotlin.UInt): List<CompletedTransfer>
+    
+    /**
      * Zip `sources` (files or directories, walked recursively) into
      * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
      * auto-renamed away with a `-N` suffix). Streams through a bounded
@@ -2763,6 +2833,18 @@ public interface SuperFilesInterface {
      * Returns the number of entries indexed.
      */
     fun `indexDir`(`id`: kotlin.String): kotlin.UInt
+    
+    /**
+     * 后台版索引扫描：uniffi async 方法，ArkTS 侧拿到 `Promise<bigint>`，
+     * JS 线程只负责发起，整个扫描挂在 blocking 池跑（`Runtime::block_on`
+     * 不能出现在 tokio worker 上，这正是用 spawn_blocking 的原因）；
+     * 进度回调经 native adapter 的 threadsafe function 送回 JS 线程。
+     *
+     * 取代先前行内在生成 bindings 里手写 `indexDirBackground` 的做法：
+     * 那段代码在每次重跑 gen-bindings 后都会被覆盖丢失（曾经就因此编译
+     * 断裂），正式导出后不再有这个问题。
+     */
+    suspend fun `indexDirBackground`(`id`: kotlin.String, `listener`: IndexProgressListener, `full`: kotlin.Boolean): kotlin.ULong
     
     /**
      * 手动「重建索引」：忽略 mtime 增量判断，整棵重新列举（仍然会落
@@ -2929,6 +3011,8 @@ public interface SuperFilesInterface {
     fun `rootId`(): kotlin.String
     
     /**
+     * 扫描主体在模块级自由函数 [`index_subtree_on`] 里（uniffi 的 export
+     * impl 不接受无 self 的关联函数），后台 async 版和同步版共用。
      * Indexed search. Errors when no index path was configured.
      */
     fun `search`(`query`: kotlin.String, `limit`: kotlin.UInt): List<Entry>
@@ -3193,6 +3277,28 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
 
     
     /**
+     * Recently completed jobs, newest first — the storage-cleanup page
+     * lists what past transfers landed on this device so the user can
+     * reclaim space (delete actual destination files, then the row).
+     * Only jobs whose destination was this device's local root make
+     * sense for cleanup, so remote-dst jobs are filtered out there.
+     */
+    @Throws(SfException::class)override fun `completedTransfers`(`limit`: kotlin.UInt): List<CompletedTransfer> {
+            return FfiConverterSequenceTypeCompletedTransfer.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_completed_transfers(
+        it,
+        
+        FfiConverterUInt.lower(`limit`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Zip `sources` (files or directories, walked recursively) into
      * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
      * auto-renamed away with a `-N` suffix). Streams through a bounded
@@ -3413,6 +3519,40 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
     )
     }
     
+
+    
+    /**
+     * 后台版索引扫描：uniffi async 方法，ArkTS 侧拿到 `Promise<bigint>`，
+     * JS 线程只负责发起，整个扫描挂在 blocking 池跑（`Runtime::block_on`
+     * 不能出现在 tokio worker 上，这正是用 spawn_blocking 的原因）；
+     * 进度回调经 native adapter 的 threadsafe function 送回 JS 线程。
+     *
+     * 取代先前行内在生成 bindings 里手写 `indexDirBackground` 的做法：
+     * 那段代码在每次重跑 gen-bindings 后都会被覆盖丢失（曾经就因此编译
+     * 断裂），正式导出后不再有这个问题。
+     */
+    @Throws(SfException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `indexDirBackground`(`id`: kotlin.String, `listener`: IndexProgressListener, `full`: kotlin.Boolean) : kotlin.ULong {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_superfiles_fn_method_superfiles_index_dir_background(
+                uniffiHandle,
+                
+        FfiConverterString.lower(`id`),
+        FfiConverterTypeIndexProgressListener.lower(`listener`),
+        FfiConverterBoolean.lower(`full`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_superfiles_rust_future_poll_u64(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_superfiles_rust_future_complete_u64(future, continuation) },
+        { future -> UniffiLib.ffi_superfiles_rust_future_free_u64(future) },
+        // lift function
+        { FfiConverterULong.lift(it) },
+        // Error FFI converter
+        SfException.ErrorHandler,
+    )
+    }
 
     
     /**
@@ -3996,6 +4136,8 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
 
     
     /**
+     * 扫描主体在模块级自由函数 [`index_subtree_on`] 里（uniffi 的 export
+     * impl 不接受无 self 的关联函数），后台 async 版和同步版共用。
      * Indexed search. Errors when no index path was configured.
      */
     @Throws(SfException::class)override fun `search`(`query`: kotlin.String, `limit`: kotlin.UInt): List<Entry> {
@@ -4806,6 +4948,80 @@ public object FfiConverterTypeCapabilities: FfiConverterRustBuffer<Capabilities>
             FfiConverterBoolean.write(value.`canRandomWrite`, buf)
             FfiConverterBoolean.write(value.`canWatch`, buf)
             FfiConverterBoolean.write(value.`nativeThumbnails`, buf)
+    }
+}
+
+
+
+/**
+ * A finished (completed) transfer as the storage-cleanup page sees it:
+ * what landed where, how big, and when it finished.
+ */
+data class CompletedTransfer (
+    var `id`: kotlin.String
+    , 
+    /**
+     * Destination files = join(dest_dir, basename(source)); the cleanup
+     * page deletes exactly these when the user reclaims the space.
+     */
+    var `sources`: List<kotlin.String>
+    , 
+    var `destDir`: kotlin.String
+    , 
+    var `isMove`: kotlin.Boolean
+    , 
+    var `filesTotal`: kotlin.ULong
+    , 
+    var `bytesTotal`: kotlin.ULong
+    , 
+    /**
+     * Epoch ms of the terminal write (row updated_at).
+     */
+    var `finishedAtMs`: kotlin.Long
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCompletedTransfer: FfiConverterRustBuffer<CompletedTransfer> {
+    override fun read(buf: ByteBuffer): CompletedTransfer {
+        return CompletedTransfer(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterLong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: CompletedTransfer) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterSequenceString.allocationSize(value.`sources`) +
+            FfiConverterString.allocationSize(value.`destDir`) +
+            FfiConverterBoolean.allocationSize(value.`isMove`) +
+            FfiConverterULong.allocationSize(value.`filesTotal`) +
+            FfiConverterULong.allocationSize(value.`bytesTotal`) +
+            FfiConverterLong.allocationSize(value.`finishedAtMs`)
+    )
+
+    override fun write(value: CompletedTransfer, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterSequenceString.write(value.`sources`, buf)
+            FfiConverterString.write(value.`destDir`, buf)
+            FfiConverterBoolean.write(value.`isMove`, buf)
+            FfiConverterULong.write(value.`filesTotal`, buf)
+            FfiConverterULong.write(value.`bytesTotal`, buf)
+            FfiConverterLong.write(value.`finishedAtMs`, buf)
     }
 }
 
@@ -5939,6 +6155,34 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeCompletedTransfer: FfiConverterRustBuffer<List<CompletedTransfer>> {
+    override fun read(buf: ByteBuffer): List<CompletedTransfer> {
+        val len = buf.getInt()
+        return List<CompletedTransfer>(len) {
+            FfiConverterTypeCompletedTransfer.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<CompletedTransfer>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeCompletedTransfer.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<CompletedTransfer>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeCompletedTransfer.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeEntry: FfiConverterRustBuffer<List<Entry>> {
     override fun read(buf: ByteBuffer): List<Entry> {
         val len = buf.getInt()
@@ -6128,4 +6372,12 @@ public object FfiConverterSequenceTypeTransferSnapshot: FfiConverterRustBuffer<L
         }
     }
 }
+
+
+
+
+
+
+
+
 

@@ -227,6 +227,33 @@ pub(super) fn load_unfinished_transfers(conn: &Connection) -> Result<Vec<StoredT
     Ok(transfers)
 }
 
+/// Recently finished jobs, newest first — the storage-cleanup page shows
+/// what past transfers landed on this device so users can reclaim space.
+pub(super) fn load_recent_completed_transfers(
+    conn: &Connection,
+    limit: u32,
+) -> Result<Vec<StoredTransfer>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, sources_json, dest_dir, is_move, state,
+                    files_total, files_done, bytes_total, bytes_done,
+                    file_offsets_json, error, created_at, updated_at
+             FROM transfers
+             WHERE state = 'completed'
+             ORDER BY updated_at DESC
+             LIMIT ?1",
+        )
+        .map_err(db_err)?;
+    let rows = stmt
+        .query_map(params![limit as i64], row_to_transfer)
+        .map_err(db_err)?;
+    let mut transfers = Vec::new();
+    for row in rows {
+        transfers.push(row.map_err(db_err)?);
+    }
+    Ok(transfers)
+}
+
 pub(super) fn forget_transfer(conn: &Connection, id: &str) -> Result<()> {
     conn.execute("DELETE FROM transfers WHERE id = ?1", params![id])
         .map_err(db_err)?;

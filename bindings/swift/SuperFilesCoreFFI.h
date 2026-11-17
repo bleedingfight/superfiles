@@ -245,7 +245,7 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureRes
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_INDEX_PROGRESS_LISTENER_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_INDEX_PROGRESS_LISTENER_METHOD0
-typedef void (*UniffiCallbackInterfaceIndexProgressListenerMethod0)(uint64_t, uint64_t, uint64_t, float, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceIndexProgressListenerMethod0)(uint64_t, uint64_t, uint64_t, double, void* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
@@ -300,7 +300,7 @@ void uniffi_superfiles_fn_init_callback_vtable_indexprogresslistener(const Uniff
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_INDEXPROGRESSLISTENER_ON_PROGRESS
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_INDEXPROGRESSLISTENER_ON_PROGRESS
-void uniffi_superfiles_fn_method_indexprogresslistener_on_progress(uint64_t ptr, uint64_t directories, uint64_t entries, float fraction, RustCallStatus *_Nonnull out_status
+void uniffi_superfiles_fn_method_indexprogresslistener_on_progress(uint64_t ptr, uint64_t directories, uint64_t entries, double fraction, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_INDEXPROGRESSLISTENER_ON_FINISHED
@@ -398,6 +398,11 @@ void uniffi_superfiles_fn_method_superfiles_clear_index(uint64_t ptr, RustCallSt
 uint64_t uniffi_superfiles_fn_method_superfiles_clear_index_prefix(uint64_t ptr, RustBuffer prefix, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_COMPLETED_TRANSFERS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_COMPLETED_TRANSFERS
+RustBuffer uniffi_superfiles_fn_method_superfiles_completed_transfers(uint64_t ptr, uint32_t limit, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_COMPRESS_ZIP
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_COMPRESS_ZIP
 RustBuffer uniffi_superfiles_fn_method_superfiles_compress_zip(uint64_t ptr, RustBuffer sources, RustBuffer dest_dir, RustBuffer name, RustBuffer method, uint64_t listener, RustCallStatus *_Nonnull out_status
@@ -456,6 +461,11 @@ uint64_t uniffi_superfiles_fn_method_superfiles_index_count(uint64_t ptr, RustCa
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_INDEX_DIR
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_INDEX_DIR
 uint32_t uniffi_superfiles_fn_method_superfiles_index_dir(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_INDEX_DIR_BACKGROUND
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_INDEX_DIR_BACKGROUND
+uint64_t uniffi_superfiles_fn_method_superfiles_index_dir_background(uint64_t ptr, RustBuffer id, uint64_t listener, int8_t full
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_INDEX_DIR_FULL_WITH_PROGRESS
@@ -1068,6 +1078,12 @@ uint16_t uniffi_superfiles_checksum_method_superfiles_clear_index_prefix(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_COMPLETED_TRANSFERS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_COMPLETED_TRANSFERS
+uint16_t uniffi_superfiles_checksum_method_superfiles_completed_transfers(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_COMPRESS_ZIP
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_COMPRESS_ZIP
 uint16_t uniffi_superfiles_checksum_method_superfiles_compress_zip(void
@@ -1137,6 +1153,12 @@ uint16_t uniffi_superfiles_checksum_method_superfiles_index_count(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_INDEX_DIR
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_INDEX_DIR
 uint16_t uniffi_superfiles_checksum_method_superfiles_index_dir(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_INDEX_DIR_BACKGROUND
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_INDEX_DIR_BACKGROUND
+uint16_t uniffi_superfiles_checksum_method_superfiles_index_dir_background(void
     
 );
 #endif

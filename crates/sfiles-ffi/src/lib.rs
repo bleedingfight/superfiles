@@ -252,6 +252,36 @@ pub struct PendingTransfer {
     pub bytes_done: u64,
 }
 
+/// A finished (completed) transfer as the storage-cleanup page sees it:
+/// what landed where, how big, and when it finished.
+#[derive(uniffi::Record)]
+pub struct CompletedTransfer {
+    pub id: String,
+    /// Destination files = join(dest_dir, basename(source)); the cleanup
+    /// page deletes exactly these when the user reclaims the space.
+    pub sources: Vec<String>,
+    pub dest_dir: String,
+    pub is_move: bool,
+    pub files_total: u64,
+    pub bytes_total: u64,
+    /// Epoch ms of the terminal write (row updated_at).
+    pub finished_at_ms: i64,
+}
+
+impl From<sfiles_index::StoredTransfer> for CompletedTransfer {
+    fn from(stored: sfiles_index::StoredTransfer) -> Self {
+        Self {
+            id: stored.id,
+            sources: stored.sources,
+            dest_dir: stored.dest_dir,
+            is_move: stored.is_move,
+            files_total: stored.files_total,
+            bytes_total: stored.bytes_total,
+            finished_at_ms: stored.updated_at,
+        }
+    }
+}
+
 impl From<sfiles_index::StoredTransfer> for PendingTransfer {
     fn from(stored: sfiles_index::StoredTransfer) -> Self {
         Self {
@@ -1546,6 +1576,20 @@ impl SuperFiles {
             .into_iter()
             .filter(|row| !live.contains(&row.id))
             .map(PendingTransfer::from)
+            .collect())
+    }
+
+    /// Recently completed jobs, newest first — the storage-cleanup page
+    /// lists what past transfers landed on this device so the user can
+    /// reclaim space (delete actual destination files, then the row).
+    /// Only jobs whose destination was this device's local root make
+    /// sense for cleanup, so remote-dst jobs are filtered out there.
+    pub fn completed_transfers(&self, limit: u32) -> Result<Vec<CompletedTransfer>, SfError> {
+        let index = self.require_index()?.clone();
+        Ok(index
+            .load_recent_completed_transfers(limit)?
+            .into_iter()
+            .map(CompletedTransfer::from)
             .collect())
     }
 

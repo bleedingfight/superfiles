@@ -33,6 +33,27 @@ export interface Capabilities {
 }
 
 /**
+ * A finished (completed) transfer as the storage-cleanup page sees it:
+ * what landed where, how big, and when it finished.
+ */
+export interface CompletedTransfer {
+  id: string;
+  /**
+   * Destination files = join(dest_dir, basename(source)); the cleanup
+   * page deletes exactly these when the user reclaims the space.
+   */
+  sources: Array<string>;
+  destDir: string;
+  isMove: boolean;
+  filesTotal: bigint;
+  bytesTotal: bigint;
+  /**
+   * Epoch ms of the terminal write (row updated_at).
+   */
+  finishedAtMs: bigint;
+}
+
+/**
  * A single filesystem entry as seen by the UI.
  */
 export interface Entry {
@@ -297,6 +318,7 @@ export declare class SuperFiles {
   capabilities(id: string): Capabilities;
   clearIndex(): void;
   clearIndexPrefix(prefix: string): bigint;
+  completedTransfers(limit: number): Array<CompletedTransfer>;
   compressZip(sources: Array<string>, destDir: string, name: string, method: ZipMethod, listener: ZipProgressListener): Entry;
   countByExts(exts: Array<string>, includeHidden: boolean): bigint;
   createDir(parent: string, name: string): Entry;

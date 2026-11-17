@@ -551,16 +551,16 @@ fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterFloat: FfiConverterPrimitive {
-    typealias FfiType = Float
-    typealias SwiftType = Float
+fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
+    typealias FfiType = Double
+    typealias SwiftType = Double
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Float {
-        return try lift(readFloat(&buf))
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Double {
+        return try lift(readDouble(&buf))
     }
 
-    public static func write(_ value: Float, into buf: inout [UInt8]) {
-        writeFloat(&buf, lower(value))
+    public static func write(_ value: Double, into buf: inout [UInt8]) {
+        writeDouble(&buf, lower(value))
     }
 }
 
@@ -661,7 +661,7 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
  */
 public protocol IndexProgressListener: AnyObject, Sendable {
     
-    func onProgress(directories: UInt64, entries: UInt64, fraction: Float) 
+    func onProgress(directories: UInt64, entries: UInt64, fraction: Double) 
     
     func onFinished(total: UInt64) 
     
@@ -723,13 +723,13 @@ open class IndexProgressListenerImpl: IndexProgressListener, @unchecked Sendable
     
 
     
-open func onProgress(directories: UInt64, entries: UInt64, fraction: Float)  {try! rustCall() {
+open func onProgress(directories: UInt64, entries: UInt64, fraction: Double)  {try! rustCall() {
         uniffiCallStatus in
     uniffi_superfiles_fn_method_indexprogresslistener_on_progress(
             self.uniffiCloneHandle(),
         FfiConverterUInt64.lower(directories),
         FfiConverterUInt64.lower(entries),
-        FfiConverterFloat.lower(fraction),uniffiCallStatus
+        FfiConverterDouble.lower(fraction),uniffiCallStatus
     )
 }
 }
@@ -775,7 +775,7 @@ fileprivate struct UniffiCallbackInterfaceIndexProgressListener {
             uniffiHandle: UInt64,
             directories: UInt64,
             entries: UInt64,
-            fraction: Float,
+            fraction: Double,
             uniffiOutReturn: UnsafeMutableRawPointer,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
@@ -787,7 +787,7 @@ fileprivate struct UniffiCallbackInterfaceIndexProgressListener {
                 return uniffiObj.onProgress(
                      directories: try FfiConverterUInt64.lift(directories),
                      entries: try FfiConverterUInt64.lift(entries),
-                     fraction: try FfiConverterFloat.lift(fraction)
+                     fraction: try FfiConverterDouble.lift(fraction)
                 )
             }
 
@@ -1138,6 +1138,15 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
     func clearIndexPrefix(prefix: String) throws  -> UInt64
     
     /**
+     * Recently completed jobs, newest first — the storage-cleanup page
+     * lists what past transfers landed on this device so the user can
+     * reclaim space (delete actual destination files, then the row).
+     * Only jobs whose destination was this device's local root make
+     * sense for cleanup, so remote-dst jobs are filtered out there.
+     */
+    func completedTransfers(limit: UInt32) throws  -> [CompletedTransfer]
+    
+    /**
      * Zip `sources` (files or directories, walked recursively) into
      * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
      * auto-renamed away with a `-N` suffix). Streams through a bounded
@@ -1196,6 +1205,18 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
      * Returns the number of entries indexed.
      */
     func indexDir(id: String) throws  -> UInt32
+    
+    /**
+     * 后台版索引扫描：uniffi async 方法，ArkTS 侧拿到 `Promise<bigint>`，
+     * JS 线程只负责发起，整个扫描挂在 blocking 池跑（`Runtime::block_on`
+     * 不能出现在 tokio worker 上，这正是用 spawn_blocking 的原因）；
+     * 进度回调经 native adapter 的 threadsafe function 送回 JS 线程。
+     *
+     * 取代先前行内在生成 bindings 里手写 `indexDirBackground` 的做法：
+     * 那段代码在每次重跑 gen-bindings 后都会被覆盖丢失（曾经就因此编译
+     * 断裂），正式导出后不再有这个问题。
+     */
+    func indexDirBackground(id: String, listener: IndexProgressListener, full: Bool) async throws  -> UInt64
     
     /**
      * 手动「重建索引」：忽略 mtime 增量判断，整棵重新列举（仍然会落
@@ -1362,6 +1383,8 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
     func rootId()  -> String
     
     /**
+     * 扫描主体在模块级自由函数 [`index_subtree_on`] 里（uniffi 的 export
+     * impl 不接受无 self 的关联函数），后台 async 版和同步版共用。
      * Indexed search. Errors when no index path was configured.
      */
     func search(query: String, limit: UInt32) throws  -> [Entry]
@@ -1567,6 +1590,23 @@ open func clearIndexPrefix(prefix: String)throws  -> UInt64  {
 }
     
     /**
+     * Recently completed jobs, newest first — the storage-cleanup page
+     * lists what past transfers landed on this device so the user can
+     * reclaim space (delete actual destination files, then the row).
+     * Only jobs whose destination was this device's local root make
+     * sense for cleanup, so remote-dst jobs are filtered out there.
+     */
+open func completedTransfers(limit: UInt32)throws  -> [CompletedTransfer]  {
+    return try  FfiConverterSequenceTypeCompletedTransfer.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_completed_transfers(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(limit),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Zip `sources` (files or directories, walked recursively) into
      * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
      * auto-renamed away with a `-N` suffix). Streams through a bounded
@@ -1731,6 +1771,32 @@ open func indexDir(id: String)throws  -> UInt32  {
         FfiConverterString.lower(id),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * 后台版索引扫描：uniffi async 方法，ArkTS 侧拿到 `Promise<bigint>`，
+     * JS 线程只负责发起，整个扫描挂在 blocking 池跑（`Runtime::block_on`
+     * 不能出现在 tokio worker 上，这正是用 spawn_blocking 的原因）；
+     * 进度回调经 native adapter 的 threadsafe function 送回 JS 线程。
+     *
+     * 取代先前行内在生成 bindings 里手写 `indexDirBackground` 的做法：
+     * 那段代码在每次重跑 gen-bindings 后都会被覆盖丢失（曾经就因此编译
+     * 断裂），正式导出后不再有这个问题。
+     */
+open func indexDirBackground(id: String, listener: IndexProgressListener, full: Bool)async throws  -> UInt64  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_superfiles_fn_method_superfiles_index_dir_background(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id),FfiConverterTypeIndexProgressListener_lower(listener),FfiConverterBool.lower(full)
+                )
+            },
+            pollFunc: ffi_superfiles_rust_future_poll_u64,
+            completeFunc: ffi_superfiles_rust_future_complete_u64,
+            freeFunc: ffi_superfiles_rust_future_free_u64,
+            liftFunc: FfiConverterUInt64.lift,
+            errorHandler: FfiConverterTypeSfError_lift
+        )
 }
     
     /**
@@ -2172,6 +2238,8 @@ open func rootId() -> String  {
 }
     
     /**
+     * 扫描主体在模块级自由函数 [`index_subtree_on`] 里（uniffi 的 export
+     * impl 不接受无 self 的关联函数），后台 async 版和同步版共用。
      * Indexed search. Errors when no index path was configured.
      */
 open func search(query: String, limit: UInt32)throws  -> [Entry]  {
@@ -2808,6 +2876,98 @@ public func FfiConverterTypeCapabilities_lift(_ buf: RustBuffer) throws -> Capab
 #endif
 public func FfiConverterTypeCapabilities_lower(_ value: Capabilities) -> RustBuffer {
     return FfiConverterTypeCapabilities.lower(value)
+}
+
+
+/**
+ * A finished (completed) transfer as the storage-cleanup page sees it:
+ * what landed where, how big, and when it finished.
+ */
+public struct CompletedTransfer: Equatable, Hashable {
+    public var id: String
+    /**
+     * Destination files = join(dest_dir, basename(source)); the cleanup
+     * page deletes exactly these when the user reclaims the space.
+     */
+    public var sources: [String]
+    public var destDir: String
+    public var isMove: Bool
+    public var filesTotal: UInt64
+    public var bytesTotal: UInt64
+    /**
+     * Epoch ms of the terminal write (row updated_at).
+     */
+    public var finishedAtMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, 
+        /**
+         * Destination files = join(dest_dir, basename(source)); the cleanup
+         * page deletes exactly these when the user reclaims the space.
+         */sources: [String], destDir: String, isMove: Bool, filesTotal: UInt64, bytesTotal: UInt64, 
+        /**
+         * Epoch ms of the terminal write (row updated_at).
+         */finishedAtMs: Int64) {
+        self.id = id
+        self.sources = sources
+        self.destDir = destDir
+        self.isMove = isMove
+        self.filesTotal = filesTotal
+        self.bytesTotal = bytesTotal
+        self.finishedAtMs = finishedAtMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CompletedTransfer: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCompletedTransfer: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CompletedTransfer {
+        return
+            try CompletedTransfer(
+                id: FfiConverterString.read(from: &buf), 
+                sources: FfiConverterSequenceString.read(from: &buf), 
+                destDir: FfiConverterString.read(from: &buf), 
+                isMove: FfiConverterBool.read(from: &buf), 
+                filesTotal: FfiConverterUInt64.read(from: &buf), 
+                bytesTotal: FfiConverterUInt64.read(from: &buf), 
+                finishedAtMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CompletedTransfer, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterSequenceString.write(value.sources, into: &buf)
+        FfiConverterString.write(value.destDir, into: &buf)
+        FfiConverterBool.write(value.isMove, into: &buf)
+        FfiConverterUInt64.write(value.filesTotal, into: &buf)
+        FfiConverterUInt64.write(value.bytesTotal, into: &buf)
+        FfiConverterInt64.write(value.finishedAtMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCompletedTransfer_lift(_ buf: RustBuffer) throws -> CompletedTransfer {
+    return try FfiConverterTypeCompletedTransfer.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCompletedTransfer_lower(_ value: CompletedTransfer) -> RustBuffer {
+    return FfiConverterTypeCompletedTransfer.lower(value)
 }
 
 
@@ -4153,6 +4313,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeCompletedTransfer: FfiConverterRustBuffer {
+    typealias SwiftType = [CompletedTransfer]
+
+    public static func write(_ value: [CompletedTransfer], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCompletedTransfer.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CompletedTransfer] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CompletedTransfer]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCompletedTransfer.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeEntry: FfiConverterRustBuffer {
     typealias SwiftType = [Entry]
 
@@ -4324,6 +4509,54 @@ fileprivate struct FfiConverterSequenceTypeTransferSnapshot: FfiConverterRustBuf
         return seq
     }
 }
+private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
+private let UNIFFI_RUST_FUTURE_POLL_WAKE: Int8 = 1
+
+fileprivate let uniffiContinuationHandleMap = UniffiHandleMap<UnsafeContinuation<Int8, Never>>()
+
+fileprivate func uniffiRustCallAsync<F, T>(
+    rustFutureFunc: () -> UInt64,
+    pollFunc: (UInt64, @escaping UniffiRustFutureContinuationCallback, UInt64) -> (),
+    completeFunc: (UInt64, UnsafeMutablePointer<RustCallStatus>) -> F,
+    freeFunc: (UInt64) -> (),
+    liftFunc: (F) throws -> T,
+    errorHandler: ((RustBuffer) throws -> Swift.Error)?
+) async throws -> T {
+    // Make sure to call the ensure init function since future creation doesn't have a
+    // RustCallStatus param, so doesn't use makeRustCall()
+    uniffiEnsureSuperfilesInitialized()
+    let rustFuture = rustFutureFunc()
+    defer {
+        freeFunc(rustFuture)
+    }
+    var pollResult: Int8;
+    repeat {
+        pollResult = await withUnsafeContinuation {
+            pollFunc(
+                rustFuture,
+                { handle, pollResult in
+                    uniffiFutureContinuationCallback(handle: handle, pollResult: pollResult)
+                },
+                uniffiContinuationHandleMap.insert(obj: $0)
+            )
+        }
+    } while pollResult != UNIFFI_RUST_FUTURE_POLL_READY
+
+    return try liftFunc(makeRustCall(
+        { completeFunc(rustFuture, $0) },
+        errorHandler: errorHandler
+    ))
+}
+
+// Callback handlers for an async calls.  These are invoked by Rust when the future is ready.  They
+// lift the return value or error and resume the suspended function.
+fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: Int8) {
+    if let continuation = try? uniffiContinuationHandleMap.remove(handle: handle) {
+        continuation.resume(returning: pollResult)
+    } else {
+        print("uniffiFutureContinuationCallback invalid handle")
+    }
+}
 
 private enum InitializationResult {
     case ok
@@ -4340,7 +4573,7 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_superfiles_checksum_method_indexprogresslistener_on_progress() != 22385) {
+    if (uniffi_superfiles_checksum_method_indexprogresslistener_on_progress() != 60019) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_indexprogresslistener_on_finished() != 10850) {
@@ -4385,6 +4618,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_clear_index_prefix() != 57166) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_completed_transfers() != 23493) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_compress_zip() != 5552) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4419,6 +4655,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_index_dir() != 61801) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_index_dir_background() != 50984) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_index_dir_full_with_progress() != 39911) {
@@ -4511,7 +4750,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_root_id() != 46979) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_superfiles_checksum_method_superfiles_search() != 33314) {
+    if (uniffi_superfiles_checksum_method_superfiles_search() != 45400) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_smb_list_shares() != 16507) {

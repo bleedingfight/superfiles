@@ -37,6 +37,27 @@ export interface Capabilities {
 }
 
 /**
+ * A finished (completed) transfer as the storage-cleanup page sees it:
+ * what landed where, how big, and when it finished.
+ */
+export interface CompletedTransfer {
+  id: string;
+  /**
+   * Destination files = join(dest_dir, basename(source)); the cleanup
+   * page deletes exactly these when the user reclaims the space.
+   */
+  sources: Array<string>;
+  destDir: string;
+  isMove: boolean;
+  filesTotal: bigint;
+  bytesTotal: bigint;
+  /**
+   * Epoch ms of the terminal write (row updated_at).
+   */
+  finishedAtMs: bigint;
+}
+
+/**
  * A single filesystem entry as seen by the UI.
  */
 export interface Entry {
@@ -346,6 +367,32 @@ export function __arktsReadCapabilities(reader: ByteReader): Capabilities {
     canRandomWrite: reader.readI8() !== 0,
     canWatch: reader.readI8() !== 0,
     nativeThumbnails: reader.readI8() !== 0,
+
+  };
+
+}
+
+export function __arktsWriteCompletedTransfer(writer: ByteWriter, value: CompletedTransfer): void {
+  writer.writeLengthPrefixedBytes(FfiConverterString.lower(value.id));
+  writer.writeI32(value.sources.length); for (const item of value.sources) { writer.writeLengthPrefixedBytes(FfiConverterString.lower(item)); }
+  writer.writeLengthPrefixedBytes(FfiConverterString.lower(value.destDir));
+  writer.writeI8(value.isMove ? 1 : 0);
+  writer.writeI64(value.filesTotal);
+  writer.writeI64(value.bytesTotal);
+  writer.writeI64(value.finishedAtMs);
+
+}
+
+export function __arktsReadCompletedTransfer(reader: ByteReader): CompletedTransfer {
+
+  return {
+    id: FfiConverterString.lift(reader.readLengthPrefixedBytes()),
+    sources: Array.from({ length: reader.readI32() }, () => FfiConverterString.lift(reader.readLengthPrefixedBytes())),
+    destDir: FfiConverterString.lift(reader.readLengthPrefixedBytes()),
+    isMove: reader.readI8() !== 0,
+    filesTotal: reader.readI64(),
+    bytesTotal: reader.readI64(),
+    finishedAtMs: reader.readI64(),
 
   };
 
@@ -778,6 +825,36 @@ export function __arktsLiftCapabilities(bytes: Uint8Array): Capabilities {
 
   const reader = new ByteReader(bytes);
   return __arktsReadCapabilities(reader);
+
+}
+
+export function __arktsLowerCompletedTransfer(value: CompletedTransfer): Uint8Array {
+
+  const writer = new ByteWriter();
+  __arktsWriteCompletedTransfer(writer, value);
+  return writer.finish();
+
+}
+
+export function __arktsLiftCompletedTransfer(bytes: Uint8Array): CompletedTransfer {
+
+  const reader = new ByteReader(bytes);
+  return __arktsReadCompletedTransfer(reader);
+
+}
+
+export function __arktsLowerSequenceCompletedTransfer(value: Array<CompletedTransfer>): Uint8Array {
+
+  const writer = new ByteWriter();
+  writer.writeI32(value.length); for (const item of value) { __arktsWriteCompletedTransfer(writer, item); }
+  return writer.finish();
+
+}
+
+export function __arktsLiftSequenceCompletedTransfer(bytes: Uint8Array): Array<CompletedTransfer> {
+
+  const reader = new ByteReader(bytes);
+  return Array.from({ length: reader.readI32() }, () => __arktsReadCompletedTransfer(reader));
 
 }
 
@@ -1408,6 +1485,14 @@ export class SuperFiles {
   clearIndexPrefix(prefix: string): bigint {
     try {
       return BigInt(native.uniffiSuperfilesFnMethodSuperfilesClearIndexPrefix(native.uniffiSuperfilesFnCloneSuperfiles(this.uniffiHandle()), __arktsLowerString(prefix)));
+    } catch (error) {
+      __arktsRethrowNativeError(error, __arktsLiftSfError);
+    }
+  }
+
+  completedTransfers(limit: number): Array<CompletedTransfer> {
+    try {
+      return __arktsLiftSequenceCompletedTransfer(native.uniffiSuperfilesFnMethodSuperfilesCompletedTransfers(native.uniffiSuperfilesFnCloneSuperfiles(this.uniffiHandle()), limit)) as Array<CompletedTransfer>;
     } catch (error) {
       __arktsRethrowNativeError(error, __arktsLiftSfError);
     }
