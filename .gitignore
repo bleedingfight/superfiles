@@ -19,6 +19,29 @@
 xcuserdata/
 DerivedData/
 
+# HarmonyOS
+# hvigor cache (wrapper configs under hvigor/ stay tracked)
+/apps/ohos/.hvigor/
+# Signing material (private keys / certs) must never be committed
+/signature/
+*.p12
+*.cer
+*.p7b
+# stray keystores dropped in the repo root
+/superfiles
+/未命名
+# private credential material
+/material/
+/apps/ohos/entry/src/main/ets/common/CloudSecrets.ets
+/apps/ohos/entry/libs/
+/apps/ohos/entry/build/
+/apps/ohos/entry/oh_modules/
+/apps/ohos/entry/.cxx/
+/apps/ohos/build/
+/apps/ohos/oh_modules/
+# N-API adapter crate builds here (standalone cargo workspace, see gen-bindings-arkts.sh)
+/bindings/arkts/native/target/
+
 # Editors / OS
 .idea/
 .vscode/
