@@ -29,9 +29,25 @@ cli: build
 android:
     ./scripts/build-android.sh
 
+# Linux: build + install the Dolphin KIO worker (superfiles://), see apps/kio-worker
+kio:
+    ./scripts/install-kio.sh
+
 # Rust -> xcframework + Xcode project (needs macOS)
 ios:
     ./scripts/build-ios.sh
+
+# Rust -> OHOS .so files (needs command-line-tools, see apps/ohos/README.md)
+ohos:
+    ./scripts/build-ohos.sh
+
+# build + sign + install + launch the HarmonyOS app on the attached phone
+ohos-run:
+    ./scripts/run-ohos.sh
+
+# two-way source sync with macmini:~/super-files (add -n for a dry run)
+sync:
+    ./scripts/sync-macmini.sh
 
 # cargo clean + drop generated iOS artifacts
 clean:

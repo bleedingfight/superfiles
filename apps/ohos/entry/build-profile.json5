@@ -1,0 +1,30 @@
+{
+  "apiType": "stageMode",
+  "buildOption": {
+    "arkOptions": {
+      "buildProfileFields": {
+        "SHOW_UNCONFIGURED_CLOUD": true
+      }
+    }
+  },
+  "buildOptionSet": [
+    {
+      "name": "release",
+      "arkOptions": {
+        "obfuscation": {
+          "ruleOptions": {
+            "enable": false
+          }
+        },
+        "buildProfileFields": {
+          "SHOW_UNCONFIGURED_CLOUD": false
+        }
+      }
+    }
+  ],
+  "targets": [
+    {
+      "name": "default"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "Super Files"
+    },
+    {
+      "name": "module_desc",
+      "value": "Super Files entry module"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "src": [
+    "pages/Index",
+    "pages/Preview",
+    "pages/NetworkStorage",
+    "pages/Favorites",
+    "pages/RecentsPage",
+    "pages/TransfersPage",
+    "pages/LocalSendPage",
+    "pages/Cleanup",
+    "pages/IndexManage",
+    "pages/LocalBrowse"
+  ]
+}
