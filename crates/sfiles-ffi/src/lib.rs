@@ -173,7 +173,7 @@ pub struct ShareInfo {
 /// `fraction ∈ [0,1]` 单调递增（按「已处理目录 / 已处理+待处理」估算）。
 #[uniffi::export(with_foreign)]
 pub trait IndexProgressListener: Send + Sync {
-    fn on_progress(&self, directories: u64, entries: u64, fraction: f32);
+    fn on_progress(&self, directories: u64, entries: u64, fraction: f64);
     fn on_finished(&self, total: u64);
 }
 
@@ -192,6 +192,8 @@ impl From<ConflictPolicy> for EngineConflict {
 pub enum TransferState {
     Queued,
     Running,
+    /// 用户暂停（非终态）：可 unpause 继续、cancel 终止。
+    Paused,
     Completed,
     Failed,
     Cancelled,
@@ -202,6 +204,7 @@ impl From<sfiles_engine::TransferState> for TransferState {
         match state {
             sfiles_engine::TransferState::Queued => TransferState::Queued,
             sfiles_engine::TransferState::Running => TransferState::Running,
+            sfiles_engine::TransferState::Paused => TransferState::Paused,
             sfiles_engine::TransferState::Completed => TransferState::Completed,
             sfiles_engine::TransferState::Failed => TransferState::Failed,
             sfiles_engine::TransferState::Cancelled => TransferState::Cancelled,
@@ -220,6 +223,10 @@ pub struct TransferSnapshot {
     pub files_total: u64,
     pub current: Option<String>,
     pub error: Option<String>,
+    /// 任务创建（开始）时间，epoch 毫秒。
+    pub started_at_ms: i64,
+    /// 结束时间（完成/失败/取消），未结束为 None。
+    pub finished_at_ms: Option<i64>,
 }
 
 /// One mounted remote connection, as listed by the connection UI.
@@ -271,6 +278,8 @@ impl From<sfiles_engine::TransferSnapshot> for TransferSnapshot {
             files_total: snapshot.files_total,
             current: snapshot.current,
             error: snapshot.error,
+            started_at_ms: snapshot.started_at_ms,
+            finished_at_ms: snapshot.finished_at_ms,
         }
     }
 }
@@ -433,9 +442,9 @@ impl LocalSendHandle {
         port: u16,
         fingerprint: Option<String>,
     ) -> Result<LocalSendPeer, SfError> {
-        let ip: std::net::IpAddr = ip
-            .parse()
-            .map_err(|_| SfError::InvalidName { detail: "invalid IP address".into() })?;
+        let ip: std::net::IpAddr = ip.parse().map_err(|_| SfError::InvalidName {
+            detail: "invalid IP address".into(),
+        })?;
         let expected = fingerprint.as_deref().and_then(parse_fingerprint);
         let info = runtime()
             .block_on(self.service.register_at(ip, port, expected))
@@ -453,10 +462,9 @@ impl LocalSendHandle {
     pub fn send(&self, peer: LocalSendPeer, ids: Vec<String>) -> Result<(), SfError> {
         let peer = sfiles_localsend::DiscoveredPeer {
             alias: peer.alias,
-            ip: peer
-                .ip
-                .parse()
-                .map_err(|_| SfError::InvalidName { detail: "invalid IP address".into() })?,
+            ip: peer.ip.parse().map_err(|_| SfError::InvalidName {
+                detail: "invalid IP address".into(),
+            })?,
             port: peer.port,
             fingerprint: peer.fingerprint,
             device_type: peer.device_type,
@@ -496,6 +504,47 @@ fn runtime() -> &'static Runtime {
 }
 
 /// Epoch milliseconds（列表缓存/收藏/最近打开的时间戳统一口径）。
+/// 紧凑 Entry 编码（小端）：
+/// u32 count，然后每条：u8 kind, u8 flags(hidden|readonly), i64 size,
+/// i64 modified_ms（i64::MIN = None），id, parent, name, mime（各为
+/// u32 len + UTF-8；len = u32::MAX 表示 None）。
+fn pack_entries(entries: &[vfs_core::Entry]) -> Vec<u8> {
+    fn put_str(out: &mut Vec<u8>, value: &str) {
+        out.extend_from_slice(&(value.len() as u32).to_le_bytes());
+        out.extend_from_slice(value.as_bytes());
+    }
+    fn put_opt(out: &mut Vec<u8>, value: Option<&str>) {
+        match value {
+            Some(v) => put_str(out, v),
+            None => out.extend_from_slice(&u32::MAX.to_le_bytes()),
+        }
+    }
+    let mut out = Vec::with_capacity(entries.len() * 96 + 4);
+    out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+    for entry in entries {
+        out.push(match entry.kind {
+            vfs_core::EntryKind::File => 0,
+            vfs_core::EntryKind::Directory => 1,
+            vfs_core::EntryKind::Symlink => 2,
+            vfs_core::EntryKind::Special => 3,
+        });
+        out.push((entry.hidden as u8) | ((entry.readonly as u8) << 1));
+        out.extend_from_slice(&(entry.size as i64).to_le_bytes());
+        out.extend_from_slice(
+            &entry
+                .modified_ms
+                .map(|m| m as i64)
+                .unwrap_or(i64::MIN)
+                .to_le_bytes(),
+        );
+        put_str(&mut out, &entry.id);
+        put_opt(&mut out, entry.parent.as_deref());
+        put_str(&mut out, &entry.name);
+        put_opt(&mut out, entry.mime.as_deref());
+    }
+    out
+}
+
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -534,6 +583,30 @@ struct WriterState {
     stop: bool,
 }
 
+/// 无进度回调：索引联动时只需要结果，不需要 UI 进度。
+struct NoopIndexProgress;
+
+impl IndexProgressListener for NoopIndexProgress {
+    fn on_progress(&self, _directories: u64, _entries: u64, _fraction: f64) {}
+    fn on_finished(&self, _total: u64) {}
+}
+
+/// 异步索引整棵子树（传输任务在 tokio 上下文里跑，不能用 block_on）。
+async fn index_subtree_async(vfs: Arc<Vfs>, index: Arc<Index>, root: String) {
+    let mut stack = vec![root];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = vfs.list(&dir).await else {
+            continue;
+        };
+        let _ = index.upsert_all(&entries);
+        for entry in entries {
+            if entry.is_dir() {
+                stack.push(entry.id);
+            }
+        }
+    }
+}
+
 impl IndexWriter {
     fn spawn(index: Arc<Index>) -> Self {
         let inner = Arc::new(WriterInner {
@@ -566,11 +639,7 @@ impl IndexWriter {
     fn flush(&self) {
         let mut state = lock_state(&self.inner.state);
         while !state.pending.is_empty() || state.busy {
-            state = self
-                .inner
-                .cv
-                .wait(state)
-                .unwrap_or_else(|e| e.into_inner());
+            state = self.inner.cv.wait(state).unwrap_or_else(|e| e.into_inner());
         }
     }
 
@@ -646,6 +715,31 @@ fn hash_entries(entries: &[vfs_core::Entry]) -> u64 {
 // ---------------------------------------------------------------------------
 
 /// The single object the app talks to.
+/// Point `std::env::temp_dir()` at a writable directory.
+///
+/// vfs-core / engine / index use `temp_dir()` for atomic writes and transfer
+/// staging. Desktop Linux/macOS always have a writable /tmp, but Android and
+/// HarmonyOS app processes have no TMPDIR and the `/tmp` fallback is not
+/// writable — every temp-file op would fail at runtime. Only redirect when
+/// the default temp dir is actually unwritable, and hide the fallback under
+/// a dotfile name so it stays out of directory listings.
+fn ensure_writable_tmpdir(local_root: &str) {
+    let probe = std::env::temp_dir().join(format!(".sf-probe-{}", std::process::id()));
+    if std::fs::write(&probe, []).is_ok() {
+        let _ = std::fs::remove_file(&probe);
+        return;
+    }
+    let tmp = std::path::Path::new(local_root).join(".tmp");
+    if std::fs::create_dir_all(&tmp).is_err() {
+        return;
+    }
+    // `unsafe` only on edition 2024+; kept so this compiles on both sides.
+    #[allow(unused_unsafe)]
+    unsafe {
+        std::env::set_var("TMPDIR", &tmp);
+    }
+}
+
 #[derive(uniffi::Object)]
 pub struct SuperFiles {
     vfs: Arc<Vfs>,
@@ -660,6 +754,61 @@ pub struct SuperFiles {
     localsend: Mutex<Option<Arc<LocalSendHandle>>>,
 }
 
+// ---- 文件系统操作与索引联动 ----
+//
+// 任何写操作成功后，索引必须在返回前同步更新：用户删掉文件再搜索，
+// 必须立刻搜不到；新建/改名/写入也一样。先 flush 后台写队列，避免
+// 队列里更早的目录列举把刚删/刚改的行又写回去。
+
+fn index_sync_upsert(core: &SuperFiles, entries: &[vfs_core::Entry]) {
+    let Some(index) = &core.index else { return };
+    if let Some(writer) = &core.index_writer {
+        writer.flush();
+    }
+    let _ = index.upsert_all(entries);
+}
+
+fn index_sync_remove(core: &SuperFiles, id: &str) {
+    let Some(index) = &core.index else { return };
+    if let Some(writer) = &core.index_writer {
+        writer.flush();
+    }
+    let _ = index.remove_subtree(id);
+}
+
+/// 改名/移动：目录改 id 前缀（纯 SQL），文件删旧行插新行。
+fn index_sync_renamed(core: &SuperFiles, old_id: &str, new_entry: &vfs_core::Entry) {
+    let Some(index) = &core.index else { return };
+    if let Some(writer) = &core.index_writer {
+        writer.flush();
+    }
+    if new_entry.kind == vfs_core::EntryKind::Directory {
+        let _ = index.rekey_subtree(old_id, &new_entry.id);
+    } else {
+        let _ = index.remove_subtree(old_id);
+    }
+    let _ = index.upsert(new_entry);
+}
+
+/// 原地写入后刷新 size/modified_ms（搜索排序、分类页都依赖它）。
+fn index_sync_stat(core: &SuperFiles, id: &str) {
+    let Some(index) = &core.index else { return };
+    if let Some(writer) = &core.index_writer {
+        writer.flush();
+    }
+    if let Ok(entry) = core.block_on(core.vfs.stat(id)) {
+        let _ = index.upsert(&entry);
+    }
+}
+
+/// 解压/复制完成后增量索引目标子树（mtime 未变的子目录直接跳过）。
+fn index_sync_subtree(core: &SuperFiles, id: &str) {
+    if core.index.is_none() {
+        return;
+    }
+    let _ = core.index_dir_with_progress(id.to_string(), std::sync::Arc::new(NoopIndexProgress));
+}
+
 #[uniffi::export]
 impl SuperFiles {
     /// Open app storage rooted at `local_root`.
@@ -668,6 +817,7 @@ impl SuperFiles {
     /// * Android: pass `context.filesDir` for M0 (no storage permission needed).
     #[uniffi::constructor]
     pub fn open(local_root: String, index_path: Option<String>) -> Result<Arc<Self>, SfError> {
+        ensure_writable_tmpdir(&local_root);
         let vfs = Arc::new(Vfs::with_local_root(&local_root)?);
         let index = match index_path {
             Some(path) => Some(Arc::new(Index::open(path)?)),
@@ -747,19 +897,27 @@ impl SuperFiles {
     }
 
     pub fn create_dir(&self, parent: String, name: String) -> Result<Entry, SfError> {
-        Ok(self.block_on(self.vfs.create_dir(&parent, &name))?.into())
+        let entry = self.block_on(self.vfs.create_dir(&parent, &name))?;
+        index_sync_upsert(self, std::slice::from_ref(&entry));
+        Ok(entry.into())
     }
 
     pub fn create_file(&self, parent: String, name: String) -> Result<Entry, SfError> {
-        Ok(self.block_on(self.vfs.create_file(&parent, &name))?.into())
+        let entry = self.block_on(self.vfs.create_file(&parent, &name))?;
+        index_sync_upsert(self, std::slice::from_ref(&entry));
+        Ok(entry.into())
     }
 
     pub fn remove(&self, id: String, recursive: bool) -> Result<(), SfError> {
-        Ok(self.block_on(self.vfs.remove(&id, recursive))?)
+        self.block_on(self.vfs.remove(&id, recursive))?;
+        index_sync_remove(self, &id);
+        Ok(())
     }
 
     pub fn rename(&self, id: String, new_name: String) -> Result<Entry, SfError> {
-        Ok(self.block_on(self.vfs.rename(&id, &new_name))?.into())
+        let entry = self.block_on(self.vfs.rename(&id, &new_name))?;
+        index_sync_renamed(self, &id, &entry);
+        Ok(entry.into())
     }
 
     /// Random access read for previews. Keep `len` small (a few hundred KiB).
@@ -768,7 +926,9 @@ impl SuperFiles {
     }
 
     pub fn write_bytes(&self, id: String, offset: u64, data: Vec<u8>) -> Result<(), SfError> {
-        Ok(self.block_on(self.vfs.write_range(&id, offset, &data))?)
+        self.block_on(self.vfs.write_range(&id, offset, &data))?;
+        index_sync_stat(self, &id);
+        Ok(())
     }
 
     /// Stream a backend file into a caller owned fd (iOS `FileHandle`,
@@ -781,7 +941,9 @@ impl SuperFiles {
     /// Stream a caller owned fd into the target file. Returns bytes written.
     pub fn import_from_fd(&self, id: String, fd: i32, offset: u64) -> Result<u64, SfError> {
         let cancel = CancelToken::new();
-        Ok(self.block_on(self.vfs.write_from_fd(&id, fd, offset, &cancel))?)
+        let written = self.block_on(self.vfs.write_from_fd(&id, fd, offset, &cancel))?;
+        index_sync_stat(self, &id);
+        Ok(written)
     }
 
     pub fn join(&self, parent: String, name: String) -> String {
@@ -835,6 +997,16 @@ impl SuperFiles {
         Ok(self.block_on(vfs_core::backends::smb::list_shares(&host, port, auth))?)
     }
 
+    /// 查询 SMB 主机的 NetBIOS 主机名（扫描列表展示用；拿不到返回 None）。
+    pub fn smb_netbios_name(&self, host: String) -> Option<String> {
+        self.block_on(async move {
+            tokio::task::spawn_blocking(move || vfs_core::netbios::netbios_name(&host))
+                .await
+                .ok()
+                .flatten()
+        })
+    }
+
     /// Mount an SMB share (`\\host\share`); returns its root id.
     pub fn mount_smb(
         &self,
@@ -860,6 +1032,36 @@ impl SuperFiles {
             root.clone(),
             MountInfo {
                 scheme: "smb".into(),
+                label,
+                root_id: root.clone(),
+            },
+        );
+        Ok(root)
+    }
+
+    /// Mount an S3-compatible bucket; returns its root id (`s3://`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn mount_s3(
+        &self,
+        label: String,
+        endpoint: String,
+        region: String,
+        bucket: String,
+        access_key: String,
+        secret_key: String,
+        session_token: String,
+        path_style: bool,
+    ) -> Result<String, SfError> {
+        let token = (!session_token.is_empty()).then_some(session_token);
+        let backend = vfs_core::backends::S3Backend::new(
+            endpoint, region, bucket, access_key, secret_key, token, path_style,
+        );
+        let root = backend.root_id();
+        self.in_runtime(|| self.vfs.mount_at(&root, Arc::new(backend)));
+        self.mounts.lock().unwrap().insert(
+            root.clone(),
+            MountInfo {
+                scheme: "s3".into(),
                 label,
                 root_id: root.clone(),
             },
@@ -894,6 +1096,119 @@ impl SuperFiles {
         Ok(root)
     }
 
+    /// Mount a Google Drive account; returns its root id (`gdrive://root`).
+    /// `refresh_token` / `client_secret` may be empty when the caller holds no
+    /// refresh grant (access token only).
+    pub fn mount_google_drive(
+        &self,
+        label: String,
+        access_token: String,
+        refresh_token: String,
+        client_id: String,
+        client_secret: String,
+    ) -> Result<String, SfError> {
+        let refresh = (!refresh_token.is_empty()).then_some(refresh_token);
+        let secret = (!client_secret.is_empty()).then_some(client_secret);
+        let backend =
+            vfs_core::backends::GoogleDriveBackend::new(access_token, refresh, client_id, secret);
+        let root = backend.root_id();
+        self.in_runtime(|| self.vfs.mount_at(&root, Arc::new(backend)));
+        self.mounts.lock().unwrap().insert(
+            root.clone(),
+            MountInfo {
+                scheme: "gdrive".into(),
+                label,
+                root_id: root.clone(),
+            },
+        );
+        Ok(root)
+    }
+
+    /// Mount a cloud drive by provider id (`onedrive` / `box`; the Google and
+    /// Dropbox specific entry points stay for compatibility).
+    /// Returns the mount root id (`onedrive://root`, `box://0`).
+    pub fn mount_cloud(
+        &self,
+        provider: String,
+        label: String,
+        access_token: String,
+        refresh_token: String,
+        client_id: String,
+        client_secret: String,
+    ) -> Result<String, SfError> {
+        let refresh = (!refresh_token.is_empty()).then_some(refresh_token);
+        let secret = (!client_secret.is_empty()).then_some(client_secret);
+        let (root, backend): (String, Arc<dyn vfs_core::Backend>) = match provider.as_str() {
+            "onedrive" => {
+                let b = vfs_core::backends::OneDriveBackend::new(
+                    access_token,
+                    refresh,
+                    client_id,
+                    secret,
+                );
+                (b.root_id(), Arc::new(b))
+            }
+            "115" | "pan115" => {
+                let b = vfs_core::backends::Pan115Backend::new(
+                    access_token,
+                    refresh,
+                    client_id,
+                    secret,
+                );
+                (b.root_id(), Arc::new(b))
+            }
+            "box" => {
+                let b =
+                    vfs_core::backends::BoxBackend::new(access_token, refresh, client_id, secret);
+                (b.root_id(), Arc::new(b))
+            }
+            other => {
+                return Err(SfError::InvalidName {
+                    detail: format!("unknown cloud provider: {other}"),
+                })
+            }
+        };
+        let scheme = provider.clone();
+        self.in_runtime(|| self.vfs.mount_at(&root, backend));
+        self.mounts.lock().unwrap().insert(
+            root.clone(),
+            MountInfo {
+                scheme,
+                label,
+                root_id: root.clone(),
+            },
+        );
+        Ok(root)
+    }
+
+    /// Mount a Dropbox account; returns its root id (`dropbox://root`).
+    /// `refresh_token` / `client_secret` may be empty when the caller holds no
+    /// refresh grant (access token only).
+    pub fn mount_dropbox(
+        &self,
+        label: String,
+        access_token: String,
+        refresh_token: String,
+        client_id: String,
+        client_secret: String,
+    ) -> Result<String, SfError> {
+        let refresh = (!refresh_token.is_empty()).then_some(refresh_token);
+        let secret = (!client_secret.is_empty()).then_some(client_secret);
+        let backend =
+            vfs_core::backends::DropboxBackend::new(access_token, refresh, client_id, secret);
+        let root = backend.root_id();
+        self.in_runtime(|| self.vfs.mount_at(&root, Arc::new(backend)));
+        self.mounts.lock().unwrap().insert(
+            root.clone(),
+            MountInfo {
+                scheme: "dropbox".into(),
+                label,
+                root_id: root.clone(),
+            },
+        );
+        Ok(root)
+    }
+
     /// Every mounted connection (local root excluded).
     pub fn mounts(&self) -> Vec<MountInfo> {
         self.mounts.lock().unwrap().values().cloned().collect()
@@ -914,6 +1229,12 @@ impl SuperFiles {
     pub fn stream_url(&self, id: String) -> Result<String, SfError> {
         let server = self.stream_server()?;
         Ok(server.url_for(&id))
+    }
+
+    /// Playback stopped: drop the progressive cache for `id` (temp file deletion).
+    /// Safe to call repeatedly and for files that were never cached.
+    pub fn release_stream(&self, id: String) {
+        self.block_on(self.vfs.release_playback_cache(&id));
     }
 
     // ---------------------------------------------------------------- shares
@@ -978,7 +1299,10 @@ impl SuperFiles {
             idle_timeout_secs: options.idle_timeout_secs,
         };
         let service = self
-            .block_on(sfiles_localsend::LocalSendService::start(self.vfs.clone(), cfg))
+            .block_on(sfiles_localsend::LocalSendService::start(
+                self.vfs.clone(),
+                cfg,
+            ))
             .map_err(localsend_error)?;
         let handle = Arc::new(LocalSendHandle { service });
         *self.localsend.lock().unwrap() = Some(handle.clone());
@@ -1064,13 +1388,38 @@ impl SuperFiles {
             ..Default::default()
         };
         let index = self.index.clone();
+        let probe = handle.clone();
         runtime().spawn(async move {
-            match index {
+            match index.clone() {
                 Some(index) => {
-                    sfiles_engine::run_resumable(vfs, sources, dest_dir, opts, handle, index, None)
+                    sfiles_engine::run_resumable(
+                        vfs.clone(),
+                        sources.clone(),
+                        dest_dir.clone(),
+                        opts,
+                        handle,
+                        index,
+                        None,
+                    )
+                    .await
+                }
+                None => {
+                    sfiles_engine::run(vfs.clone(), sources.clone(), dest_dir.clone(), opts, handle)
                         .await
                 }
-                None => sfiles_engine::run(vfs, sources, dest_dir, opts, handle).await,
+            }
+            // 复制/移动完成后立刻同步索引：目标子树增量入库，移动则删掉源子树。
+            let completed = matches!(
+                probe.snapshot().state,
+                sfiles_engine::TransferState::Completed
+            );
+            if let (true, Some(index)) = (completed, index) {
+                if is_move {
+                    for source in &sources {
+                        let _ = index.remove_subtree(source);
+                    }
+                }
+                index_subtree_async(vfs, index, dest_dir).await;
             }
         });
         Ok(id)
@@ -1128,6 +1477,12 @@ impl SuperFiles {
         Ok(out)
     }
 
+    /// 只移除「最近打开」记录，不删除原文件。
+    pub fn remove_recent(&self, id: String) -> Result<(), SfError> {
+        self.require_index()?.remove_recent(&id)?;
+        Ok(())
+    }
+
     /// Zip `sources` (files or directories, walked recursively) into
     /// `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
     /// auto-renamed away with a `-N` suffix). Streams through a bounded
@@ -1156,7 +1511,27 @@ impl SuperFiles {
             runtime().handle().clone(),
             progress,
         ))?;
+        index_sync_upsert(self, std::slice::from_ref(&entry));
         Ok(entry.into())
+    }
+
+    /// 解压 zip 到目标目录（仅 .zip；同名自动重命名，防路径穿越），返回写出的条目数。
+    pub fn extract_zip(
+        &self,
+        archive_id: String,
+        dest_dir: String,
+        listener: std::sync::Arc<dyn ZipProgressListener>,
+    ) -> Result<u64, SfError> {
+        let progress = move |done: u64, total: u64| listener.on_progress(done, total);
+        let written = self.block_on(sfiles_engine::extract_zip(
+            self.vfs.clone(),
+            archive_id,
+            dest_dir.clone(),
+            runtime().handle().clone(),
+            progress,
+        ))?;
+        index_sync_subtree(self, &dest_dir);
+        Ok(written)
     }
 
     /// Transfers a previous run didn't finish (crash / killed app), restored
@@ -1247,6 +1622,23 @@ impl SuperFiles {
         }
     }
 
+    /// 暂停一个进行中的任务（Queued/Running 均可）：状态立即变 Paused，工作
+    /// 循环在最近的块边界停摆；进度保留，后台任务占位不释放。对已结束（终态）
+    /// 的任务是 no-op。
+    pub fn pause_transfer(&self, id: String) {
+        if let Some(handle) = self.transfers.lock().unwrap().get(&id) {
+            handle.pause();
+        }
+    }
+
+    ///解除暂停继续跑。与 `resumeTransfer`（崩溃后恢复登记的断点任务）不同，
+    /// 这只作用于 registry 里还活着的 Paused 任务。
+    pub fn unpause_transfer(&self, id: String) {
+        if let Some(handle) = self.transfers.lock().unwrap().get(&id) {
+            handle.unpause();
+        }
+    }
+
     /// Drop a finished transfer from the registry (UI dismissed it). Also
     /// deletes its persisted resume record, if any — this is how a pending
     /// transfer the user declined to resume goes away.
@@ -1291,54 +1683,60 @@ impl SuperFiles {
         id: String,
         listener: std::sync::Arc<dyn IndexProgressListener>,
     ) -> Result<u64, SfError> {
-        let index = self.require_index()?.clone();
-
-        // 入口目录 mtime 预检：没变化 = 整棵子树无增删 → 直接跳过（零 IO 开销）
-        let root_mtime = self.block_on(self.vfs.stat(&id))?.modified_ms.unwrap_or(0);
-        if index.dir_state_mtime(&id)?.is_some_and(|m| m == root_mtime) {
-            listener.on_finished(0);
-            return Ok(0);
-        }
-
-        let mut stack: Vec<(String, i64)> = vec![(id, root_mtime)];
-        let mut processed: u64 = 0;
-        let mut count: u64 = 0;
-        let mut best: f32 = 0.0;
-        while let Some((dir, dir_mtime)) = stack.pop() {
-            let entries = match self.block_on(self.vfs.list(&dir)) {
-                Ok(entries) => entries,
-                Err(_) => continue, // 权限受限目录直接跳过，不中断整次扫描
-            };
-            index.upsert_all(&entries)?;
-            // 删除对账：本目录下已消失的子项（含子树 + FTS 行）清出索引
-            let keep: Vec<String> = entries.iter().map(|e| e.id.clone()).collect();
-            index.prune_children(&dir, &keep)?;
-            index.save_dir_state(&dir, dir_mtime)?;
-            let _ = index.record_listing(&dir, now_ms() as i64);
-            count += entries.len() as u64;
-            for entry in entries {
-                if !entry.is_dir() {
-                    continue;
-                }
-                // 增量核心：子目录 mtime 未变 → 子树已在索引中，跳过深入
-                let child_mtime = entry.modified_ms.unwrap_or(0);
-                if index
-                    .dir_state_mtime(&entry.id)?
-                    .is_some_and(|m| m == child_mtime)
-                {
-                    continue;
-                }
-                stack.push((entry.id, child_mtime));
-            }
-            processed += 1;
-            let pending = stack.len() as u64;
-            let fraction = (processed as f32 / (processed + pending).max(1) as f32).min(0.99);
-            best = best.max(fraction);
-            listener.on_progress(processed, count, best);
-        }
-        listener.on_finished(count);
-        Ok(count)
+        self.index_subtree(id, listener, true)
     }
+
+    /// 手动「重建索引」：忽略 mtime 增量判断，整棵重新列举（仍然会落
+    /// `dir_states`，之后的自动扫描继续走增量）。网络存储首次建索引也走这条。
+    pub fn index_dir_full_with_progress(
+        &self,
+        id: String,
+        listener: std::sync::Arc<dyn IndexProgressListener>,
+    ) -> Result<u64, SfError> {
+        self.index_subtree(id, listener, false)
+    }
+
+    /// 后台版索引扫描：uniffi async 方法，ArkTS 侧拿到 `Promise<bigint>`，
+    /// JS 线程只负责发起，整个扫描挂在 blocking 池跑（`Runtime::block_on`
+    /// 不能出现在 tokio worker 上，这正是用 spawn_blocking 的原因）；
+    /// 进度回调经 native adapter 的 threadsafe function 送回 JS 线程。
+    ///
+    /// 取代先前行内在生成 bindings 里手写 `indexDirBackground` 的做法：
+    /// 那段代码在每次重跑 gen-bindings 后都会被覆盖丢失（曾经就因此编译
+    /// 断裂），正式导出后不再有这个问题。
+    #[uniffi::method]
+    pub async fn index_dir_background(
+        &self,
+        id: String,
+        listener: std::sync::Arc<dyn IndexProgressListener>,
+        full: bool,
+    ) -> Result<u64, SfError> {
+        let vfs = self.vfs.clone();
+        let index = self.require_index()?.clone();
+        tokio::task::spawn_blocking(move || index_subtree_on(vfs, index, id, listener, !full))
+            .await
+            .map_err(|e| SfError::Io {
+                detail: format!("index task panicked: {e}"),
+            })?
+    }
+
+    fn index_subtree(
+        &self,
+        id: String,
+        listener: std::sync::Arc<dyn IndexProgressListener>,
+        incremental: bool,
+    ) -> Result<u64, SfError> {
+        index_subtree_on(
+            self.vfs.clone(),
+            self.require_index()?.clone(),
+            id,
+            listener,
+            incremental,
+        )
+    }
+
+    /// 扫描主体在模块级自由函数 [`index_subtree_on`] 里（uniffi 的 export
+    /// impl 不接受无 self 的关联函数），后台 async 版和同步版共用。
 
     /// Indexed search. Errors when no index path was configured.
     pub fn search(&self, query: String, limit: u32) -> Result<Vec<Entry>, SfError> {
@@ -1349,6 +1747,65 @@ impl SuperFiles {
         let index = self.require_index()?;
         let entries = index.search(&query, limit)?;
         Ok(entries.into_iter().map(Entry::from).collect())
+    }
+
+    /// 首页分类聚合：按扩展名计数（走索引，不遍历目录树）。
+    pub fn count_by_exts(&self, exts: Vec<String>, include_hidden: bool) -> u64 {
+        // 不 flush：扫描进行中时 flush 会等整个队列（实测 1.6s）。
+        // 写操作（增/删/改名/写入）已经是同步落库的，这里不需要再等。
+        self.index
+            .as_ref()
+            .and_then(|index| index.count_by_exts(&exts, include_hidden).ok())
+            .unwrap_or(0)
+    }
+
+    /// 首页分类聚合：按扩展名列出文件（走索引，按修改时间倒序）。
+    pub fn list_by_exts(&self, exts: Vec<String>, limit: u32) -> Result<Vec<Entry>, SfError> {
+        if let Some(writer) = &self.index_writer {
+            writer.flush();
+        }
+        let index = self.require_index()?;
+        Ok(index
+            .list_by_exts(&exts, limit)?
+            .into_iter()
+            .map(Entry::from)
+            .collect())
+    }
+
+    /// 分类页快速通道：同一份 `listByExts` 结果，但走紧凑字节流。
+    ///
+    /// uniffi 的 `Vec<Entry>` 会对每个字符串各做一次 JNA 调用；9000 条结果
+    /// 实测 360ms，而 SQL 本身只有 11ms。这里一次拷贝整块 buffer，
+    /// 解码由 Kotlin 侧 `PackedEntries` 完成。
+    pub fn list_by_exts_packed(
+        &self,
+        exts: Vec<String>,
+        offset: u32,
+        limit: u32,
+        include_hidden: bool,
+    ) -> Result<Vec<u8>, SfError> {
+        // 不 flush：文件系统写操作已同步更新索引；扫描队列不该阻塞「点开分类」。
+        let index = self.require_index()?;
+        let entries = index.list_by_exts_page(&exts, offset, limit, include_hidden)?;
+        Ok(pack_entries(&entries))
+    }
+
+    /// 索引管理：某个挂载根下已索引的条目数（0 = 还没有索引）。
+    pub fn index_prefix_count(&self, prefix: String) -> u64 {
+        self.index
+            .as_ref()
+            .and_then(|index| index.count_under_prefix(&prefix).ok())
+            .unwrap_or(0)
+    }
+
+    /// 索引管理：只清掉某个挂载根的索引（含子树、FTS、目录扫描状态）。
+    /// 返回删除的条目数。
+    pub fn clear_index_prefix(&self, prefix: String) -> Result<u64, SfError> {
+        if let Some(writer) = &self.index_writer {
+            writer.flush();
+        }
+        let index = self.require_index()?;
+        Ok(index.remove_subtree(&prefix)?)
     }
 
     pub fn index_count(&self) -> u64 {
@@ -1370,6 +1827,69 @@ impl SuperFiles {
     }
 }
 
+/// 扫描主体：模块级自由函数（uniffi export impl 不接受无 self 的关联函数），
+/// 后台 async 版 [`SuperFiles::index_dir_background`] 与同步版共用；
+/// 必须在 tokio worker 之外调用（内部有 `Runtime::block_on`）。
+fn index_subtree_on(
+    vfs: Arc<Vfs>,
+    index: Arc<Index>,
+    id: String,
+    listener: std::sync::Arc<dyn IndexProgressListener>,
+    incremental: bool,
+) -> Result<u64, SfError> {
+    // 入口目录 mtime 预检：没变化 = 整棵子树无增删 → 直接跳过（零 IO 开销）。
+    // 只有增量模式才做；手动重建必须真的走一遍。
+    let root_mtime = runtime().block_on(vfs.stat(&id))?.modified_ms.unwrap_or(0);
+    if incremental
+        && index.dir_state_mtime(&id)?.is_some_and(|m| m == root_mtime)
+        && index.listed_at(&id)?.is_some()
+    {
+        listener.on_finished(0);
+        return Ok(0);
+    }
+
+    let mut stack: Vec<(String, i64)> = vec![(id, root_mtime)];
+    let mut processed: u64 = 0;
+    let mut count: u64 = 0;
+    let mut best: f64 = 0.0;
+    while let Some((dir, dir_mtime)) = stack.pop() {
+        let entries = match runtime().block_on(vfs.list(&dir)) {
+            Ok(entries) => entries,
+            Err(_) => continue, // 权限受限目录直接跳过，不中断整次扫描
+        };
+        index.upsert_all(&entries)?;
+        // 删除对账：本目录下已消失的子项（含子树 + FTS 行）清出索引
+        let keep: Vec<String> = entries.iter().map(|e| e.id.clone()).collect();
+        index.prune_children(&dir, &keep)?;
+        index.save_dir_state(&dir, dir_mtime)?;
+        let _ = index.record_listing(&dir, now_ms() as i64);
+        count += entries.len() as u64;
+        for entry in entries {
+            if !entry.is_dir() {
+                continue;
+            }
+            // 增量核心：子目录 mtime 未变 → 子树已在索引中，跳过深入
+            if incremental {
+                let child_mtime = entry.modified_ms.unwrap_or(0);
+                if index
+                    .dir_state_mtime(&entry.id)?
+                    .is_some_and(|m| m == child_mtime)
+                {
+                    continue;
+                }
+            }
+            stack.push((entry.id, entry.modified_ms.unwrap_or(0)));
+        }
+        processed += 1;
+        let pending = stack.len() as u64;
+        let fraction = (processed as f64 / (processed + pending).max(1) as f64).min(0.99);
+        best = best.max(fraction);
+        listener.on_progress(processed, count, best);
+    }
+    listener.on_finished(count);
+    Ok(count)
+}
+
 impl Drop for SuperFiles {
     /// 真正的资源释放转移到 tokio runtime 上下文里执行：
     /// 1. smb/webdav backend 的 Drop 需要 runtime（析构里 tokio::spawn，离开
@@ -1388,8 +1908,11 @@ impl Drop for SuperFiles {
             let index = self.index.clone();
             let streamer = self.streamer.lock().map(|mut s| s.take()).unwrap_or(None);
             let share = self.share.lock().map(|mut s| s.take()).unwrap_or(None);
-            let transfers: Vec<Arc<TransferHandle>> =
-                self.transfers.lock().map(|mut t| t.drain().map(|(_, v)| v).collect()).unwrap_or_default();
+            let transfers: Vec<Arc<TransferHandle>> = self
+                .transfers
+                .lock()
+                .map(|mut t| t.drain().map(|(_, v)| v).collect())
+                .unwrap_or_default();
             runtime().spawn(async move {
                 // 这些 Arc 的最后一次释放可能落在此任务内：有 runtime，安全。
                 drop(transfers);

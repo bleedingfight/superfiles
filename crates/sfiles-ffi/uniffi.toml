@@ -5,3 +5,15 @@ cdylib_name = "superfiles"
 [bindings.swift]
 module_name = "SuperFilesCore"
 ffi_module_name = "SuperFilesCoreFFI"
+
+# HarmonyOS (ArkTS) — consumed by ohos-rs/uniffi-bindgen-arkts. Generates a
+# HAR package plus a native N-API adapter crate (bindings/arkts/native) that
+# must be cross-compiled for aarch64-unknown-linux-ohos.
+[bindings.arkts]
+package_name = "@superfiles/core"
+# NOTE: must differ from the UniFFI cdylib name ("superfiles") — the adapter
+# links the core libsuperfiles.so dynamically, so both .so files ship in the
+# HAP and need distinct names (core = libsuperfiles.so, adapter = this).
+module_name = "superfiles_arkts"
+manual_load = true
+abi = "arm64-v8a"

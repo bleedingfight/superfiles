@@ -96,7 +96,12 @@ impl ShareServer {
 
     /// 二维码/链接内容（含索引页路径）。
     pub fn url(&self) -> String {
-        format!("http://{}:{}/{}/", self.lan_ip, self.addr.port(), self.token)
+        format!(
+            "http://{}:{}/{}/",
+            self.lan_ip,
+            self.addr.port(),
+            self.token
+        )
     }
 
     /// 与该 share 同根 URL 拼相对地址（manifest 里的 `f/…` 交给客户端拼）。
@@ -167,11 +172,23 @@ async fn serve_one(
     match rest {
         // 索引页（浏览器接收）
         "" => {
-            serve_bytes(&mut socket, &req.method, "text/html; charset=utf-8", index_html(&files).as_bytes()).await?
+            serve_bytes(
+                &mut socket,
+                &req.method,
+                "text/html; charset=utf-8",
+                index_html(&files).as_bytes(),
+            )
+            .await?
         }
         // App 接收清单
         "manifest.json" => {
-            serve_bytes(&mut socket, &req.method, "application/json", manifest_json(&files).as_bytes()).await?
+            serve_bytes(
+                &mut socket,
+                &req.method,
+                "application/json",
+                manifest_json(&files).as_bytes(),
+            )
+            .await?
         }
         _ => {
             // /f/<idx>/<display-name>（name 段仅展示用，路由只看 idx）
@@ -182,8 +199,14 @@ async fn serve_one(
             match idx.and_then(|i| files.get(i)) {
                 None => respond(&mut socket, 404, "Not Found", &[]).await?,
                 Some(file) => {
-                    serve_entry(&vfs, &mut socket, &file.id, &req.method, req.range.as_deref())
-                        .await?
+                    serve_entry(
+                        &vfs,
+                        &mut socket,
+                        &file.id,
+                        &req.method,
+                        req.range.as_deref(),
+                    )
+                    .await?
                 }
             }
         }
@@ -480,7 +503,14 @@ mod tests {
         let base = server.base_url();
 
         // 索引页：中文名 + 大小可读
-        let html = client.get(&base).send().await.unwrap().text().await.unwrap();
+        let html = client
+            .get(&base)
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
         assert!(html.contains("demo 视频.mp4"));
         assert!(html.contains("48.8 KB"));
         // 与 App 同源的视觉语言：品牌、汇总、文件徽章
@@ -532,7 +562,12 @@ mod tests {
 
         // 越界 idx / 错误 token → 404
         assert_eq!(
-            client.get(format!("{base}f/9/ghost")).send().await.unwrap().status(),
+            client
+                .get(format!("{base}f/9/ghost"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
             404
         );
         let port = server.port();

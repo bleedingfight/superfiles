@@ -7,7 +7,7 @@
 //! in [`CHUNK`] pieces driven by `Handle::block_on` — legal because the
 //! producer runs on the blocking pool, not an async worker.
 
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::sync::Arc;
 
 use tokio::runtime::Handle;
@@ -269,4 +269,162 @@ mod tests {
         .unwrap();
         assert_eq!(again.name, "打包-1.zip");
     }
+}
+
+/// 解压 zip 到 `dest_dir`，返回写出的条目数（文件+目录）。
+///
+/// 安全措施：丢弃任何包含 `..` 组件的条目（防路径穿越），同名文件自动
+/// `(N)` 重命名不覆盖已有内容。`progress(done, total)` 按未压缩字节计。
+pub async fn extract_zip(
+    vfs: Arc<Vfs>,
+    archive_id: String,
+    dest_dir: String,
+    handle: Handle,
+    progress: impl Fn(u64, u64) + Send + Sync + 'static,
+) -> Result<u64, VfsError> {
+    let size = vfs.stat(&archive_id).await?.size;
+    let read_vfs = vfs.clone();
+    let archive = archive_id.clone();
+    let read_handle = handle.clone();
+    let buf = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, VfsError> {
+        let handle = &read_handle;
+        let mut out: Vec<u8> = Vec::with_capacity(size as usize);
+        let mut offset = 0u64;
+        while offset < size {
+            let chunk = handle.block_on(read_vfs.read_range(&archive, offset, CHUNK))?;
+            if chunk.is_empty() {
+                break;
+            }
+            out.extend_from_slice(&chunk);
+            offset += chunk.len() as u64;
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|e| VfsError::Unsupported(format!("zip reader join: {e}")))??;
+
+    let vfs2 = vfs.clone();
+    let dest = dest_dir.clone();
+    let progress = std::sync::Arc::new(progress);
+    let write_handle = handle.clone();
+    let count = tokio::task::spawn_blocking(move || -> Result<u64, VfsError> {
+        let handle = &write_handle;
+        let reader = std::io::Cursor::new(buf);
+        let mut zip = zip::ZipArchive::new(reader)
+            .map_err(|e| VfsError::Unsupported(format!("zip open: {e}")))?;
+        let mut total: u64 = 0;
+        for i in 0..zip.len() {
+            if let Ok(e) = zip.by_index(i) {
+                total += e.size();
+            }
+        }
+        let mut done: u64 = 0;
+        let mut written: u64 = 0;
+        for i in 0..zip.len() {
+            let mut file = zip
+                .by_index(i)
+                .map_err(|e| VfsError::Unsupported(format!("zip entry: {e}")))?;
+            let raw_name = file
+                .name()
+                .map_err(|e| VfsError::Unsupported(format!("zip name: {e}")))?
+                .to_string();
+            let safe = match sanitize_zip_path(&raw_name) {
+                Some(p) if !p.is_empty() => p,
+                _ => continue,
+            };
+            let is_dir = file.is_dir() || raw_name.ends_with('/');
+            let parts: Vec<&str> = safe.split('/').filter(|p| !p.is_empty()).collect();
+            if parts.is_empty() {
+                continue;
+            }
+            // 逐级确保目录存在
+            let mut parent = dest.clone();
+            for part in &parts[..parts.len().saturating_sub(1)] {
+                parent = ensure_dir(&handle, &vfs2, &parent, part)?;
+            }
+            if is_dir {
+                ensure_dir(&handle, &vfs2, &parent, parts[parts.len() - 1])?;
+                written += 1;
+                continue;
+            }
+            let name = unique_name(&handle, &vfs2, &parent, parts[parts.len() - 1]);
+            let entry = handle
+                .block_on(vfs2.create_file(&parent, &name))
+                .map_err(|e| VfsError::Unsupported(format!("zip create: {e}")))?;
+            let mut woffset = 0u64;
+            let mut chunk = vec![0u8; CHUNK];
+            loop {
+                let n = file
+                    .read(&mut chunk)
+                    .map_err(|e| VfsError::Unsupported(format!("zip read: {e}")))?;
+                if n == 0 {
+                    break;
+                }
+                handle.block_on(vfs2.write_range(&entry.id, woffset, &chunk[..n]))?;
+                woffset += n as u64;
+                done += n as u64;
+                progress(done, total);
+            }
+            written += 1;
+        }
+        progress(total, total);
+        Ok(written)
+    })
+    .await
+    .map_err(|e| VfsError::Unsupported(format!("zip extract join: {e}")))??;
+    Ok(count)
+}
+
+/// 丢弃含 `..` 的条目，返回规范相对路径（`/` 分隔）。
+fn sanitize_zip_path(raw: &str) -> Option<String> {
+    let norm = raw.replace('\\', "/");
+    let mut out: Vec<&str> = Vec::new();
+    for part in norm.split('/') {
+        if part.is_empty() || part == "." {
+            continue;
+        }
+        if part == ".." {
+            return None;
+        }
+        out.push(part);
+    }
+    Some(out.join("/"))
+}
+
+/// 目录已存在（同名）则直接返回其 id，否则创建。
+fn ensure_dir(
+    handle: &Handle,
+    vfs: &Arc<Vfs>,
+    parent: &str,
+    name: &str,
+) -> Result<String, VfsError> {
+    let existing = handle.block_on(vfs.list(parent))?;
+    for e in existing {
+        if e.name == name && e.is_dir() {
+            return Ok(e.id);
+        }
+    }
+    Ok(handle.block_on(vfs.create_dir(parent, name))?.id)
+}
+
+/// 同名文件自动 `name (N).ext` 重命名，不覆盖已有内容。
+fn unique_name(handle: &Handle, vfs: &Arc<Vfs>, parent: &str, name: &str) -> String {
+    let existing: Vec<String> = handle
+        .block_on(vfs.list(parent))
+        .map(|v| v.into_iter().map(|e| e.name).collect())
+        .unwrap_or_default();
+    if !existing.iter().any(|n| n == name) {
+        return name.to_string();
+    }
+    let dot = name.rfind('.');
+    for i in 1..1000 {
+        let candidate = match dot {
+            Some(d) if d > 0 => format!("{} ({}).{}", &name[..d], i, &name[d + 1..]),
+            _ => format!("{} ({})", name, i),
+        };
+        if !existing.iter().any(|n| *n == candidate) {
+            return candidate;
+        }
+    }
+    format!("extract-{}", name)
 }

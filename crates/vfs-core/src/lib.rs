@@ -11,6 +11,7 @@ pub mod capabilities;
 pub mod entry;
 pub mod error;
 pub mod fd;
+pub mod netbios;
 pub mod uri;
 pub mod vfs;
 

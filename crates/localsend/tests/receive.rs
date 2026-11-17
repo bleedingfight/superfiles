@@ -85,7 +85,9 @@ async fn receives_files_over_pinned_tls() {
     // Source file lives in a sibling directory so the received name is clean.
     let src = vfs.create_dir(vfs.local_root(), "src").await.unwrap();
     let file = vfs.create_file(&src.id, "hello.txt").await.unwrap();
-    vfs.write_range(&file.id, 0, b"hello localsend").await.unwrap();
+    vfs.write_range(&file.id, 0, b"hello localsend")
+        .await
+        .unwrap();
 
     LocalSendClient::send(&vfs, &client_info(), &sender, &peer, vec![file.id.clone()])
         .await
@@ -95,10 +97,7 @@ async fn receives_files_over_pinned_tls() {
         .stat(&Vfs::join(vfs.local_root(), "hello.txt"))
         .await
         .unwrap();
-    let bytes = vfs
-        .read_range(&received.id, 0, 64)
-        .await
-        .unwrap();
+    let bytes = vfs.read_range(&received.id, 0, 64).await.unwrap();
     assert_eq!(&bytes, b"hello localsend");
 
     service.stop().await;

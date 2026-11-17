@@ -54,7 +54,11 @@ futures-util = "0.3"
 #   0.57-0.59  rand_core =0.10.0-rc-3         vs sspi rand_core ^0.10
 #   0.56       ssh-key 0.6.16 targets rsa ~0.10.0-rc.10 APIs; sspi pins
 #              rsa =0.10.0-rc.18 whose rand_core 0.10 traits break its build
-russh = "0.55"
+# russh 0.55 defaults to the aws-lc-rs crypto provider, which drags in
+# aws-lc-sys (CMake + AArch64 asm) — the worst possible dependency for the
+# aarch64-unknown-linux-ohos cross build. The `ring` provider covers the
+# same algorithms and cross-compiles with plain cc + the NDK clang.
+russh = { version = "0.55", default-features = false, features = ["ring", "rsa", "flate2"] }
 russh-sftp = "2.1.2"
 
 # Local one-line patch: smb-rs never sets TCP_NODELAY, so Nagle + delayed ACK

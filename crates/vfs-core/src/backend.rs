@@ -41,6 +41,10 @@ pub trait Backend: Send + Sync + 'static {
     /// Read at most `len` bytes starting at `offset`. Short reads are allowed.
     async fn read_range(&self, id: &str, offset: u64, len: usize) -> Result<Vec<u8>>;
 
+    /// Drop any progressive playback cache held for `id` (no-op by default).
+    /// Players call this when playback stops so temp files do not linger.
+    async fn release_stream_cache(&self, _id: &str) {}
+
     /// Write `data` at `offset`, creating the file when it does not exist.
     async fn write_range(&self, id: &str, offset: u64, data: &[u8]) -> Result<()>;
 

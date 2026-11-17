@@ -141,6 +141,13 @@ impl Vfs {
         self.backend_for(id)?.read_range(id, offset, len).await
     }
 
+    /// Drop any progressive playback cache held for `id` (players call this on stop).
+    pub async fn release_playback_cache(&self, id: &str) {
+        if let Ok(backend) = self.backend_for(id) {
+            backend.release_stream_cache(id).await;
+        }
+    }
+
     pub async fn write_range(&self, id: &str, offset: u64, data: &[u8]) -> Result<()> {
         self.backend_for(id)?.write_range(id, offset, data).await
     }

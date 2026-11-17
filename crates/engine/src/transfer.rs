@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use sfiles_index::{FileOffset, Index, StoredTransfer, TransferTaskState};
 use vfs_core::{Entry, Result, Vfs, VfsError};
 
-use crate::handle::{TransferHandle, TransferState};
+use crate::handle::TransferHandle;
 
 /// What to do when the destination already exists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,12 +154,7 @@ impl CopyRuntimeState {
         // worker 被 fsync 堵住时 IO driver 也停止 poll，前台列举/播放会一起卡住
         // （实测 2 worker 下传输期间 list p50 1.9ms → 30ms）。
         let _ = tokio::task::spawn_blocking(move || {
-            let _ = index.update_transfer_progress(
-                &id,
-                snapshot.files_done,
-                bytes_done,
-                &offsets,
-            );
+            let _ = index.update_transfer_progress(&id, snapshot.files_done, bytes_done, &offsets);
         })
         .await;
     }
@@ -211,7 +206,7 @@ pub async fn run(
     opts: CopyOptions,
     handle: Arc<TransferHandle>,
 ) {
-    debug_assert_eq!(handle.snapshot().state, TransferState::Queued);
+    debug_assert!(!handle.snapshot().state.is_terminal());
     handle.set_running();
 
     let rt = CopyRuntimeState::volatile();
@@ -245,7 +240,7 @@ pub async fn run_resumable(
     index: Arc<Index>,
     resume_from: Option<StoredTransfer>,
 ) {
-    debug_assert_eq!(handle.snapshot().state, TransferState::Queued);
+    debug_assert!(!handle.snapshot().state.is_terminal());
     handle.set_running();
 
     let rt = CopyRuntimeState::persisted(index);
@@ -291,6 +286,21 @@ pub async fn run_resumable(
             handle.finish_err(message);
         }
     }
+}
+
+/// Pause gate: while a pause request is active the copy loop sleeps here and
+/// holds the state at [`TransferState::Paused`]. Cancellation wins over the
+/// pause — cancelling a paused task takes effect immediately.
+async fn wait_while_paused(handle: &TransferHandle) -> Result<()> {
+    while handle.is_pause_requested() {
+        if handle.is_cancelled() {
+            return Err(VfsError::Cancelled);
+        }
+        handle.mark_paused();
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+    }
+    handle.mark_running_if_paused();
+    Ok(())
 }
 
 async fn run_inner(
@@ -342,6 +352,7 @@ async fn scan(
     if handle.is_cancelled() {
         return Err(VfsError::Cancelled);
     }
+    wait_while_paused(handle).await?;
     if depth > 64 {
         return Err(VfsError::Io(
             "directory tree too deep (possible loop)".into(),
@@ -376,6 +387,7 @@ async fn copy_tree(
         if handle.is_cancelled() {
             return Err(VfsError::Cancelled);
         }
+        wait_while_paused(handle).await?;
         let entry = vfs.stat(&current).await?;
         handle.set_current(Some(entry.name.clone()));
 
@@ -467,6 +479,7 @@ async fn copy_file(
         if handle.is_cancelled() {
             return Err(VfsError::Cancelled);
         }
+        wait_while_paused(handle).await?;
         let remaining = entry.size - offset;
         let mut written = 0u64;
         if remaining > want as u64 {
@@ -554,6 +567,7 @@ fn renamed(name: &str, index: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::handle::TransferState;
     use vfs_core::CancelToken;
 
     fn temp_root(tag: &str) -> std::path::PathBuf {
@@ -830,7 +844,10 @@ mod tests {
         )
         .await;
         assert!(stored.is_move, "move flag must be persisted");
-        assert!(vfs.stat(&src).await.is_ok(), "crash must not delete the source");
+        assert!(
+            vfs.stat(&src).await.is_ok(),
+            "crash must not delete the source"
+        );
 
         let handle = Arc::new(TransferHandle::new("t-move-resume", CancelToken::new()));
         run_resumable(
@@ -995,6 +1012,129 @@ mod tests {
                 .await
                 .unwrap(),
             b"new"
+        );
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// 快照轮询到终态（含 Paused 之后的取消）为止，超时 10s 视为挂死。
+    async fn wait_for_state(handle: &TransferHandle, want: TransferState) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let state = handle.snapshot().state;
+            assert!(std::time::Instant::now() < deadline, "stalled at {state:?}");
+            if state == want {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    }
+
+    /// 起跑前请求暂停：任务停在第一道闸门，状态 Paused、进度冻结；停在
+    /// 暂停中的任务 cancel 立即生效（取消优先于暂停）。
+    #[tokio::test]
+    async fn pause_holds_at_gate_and_cancel_wins_while_paused() {
+        let root = temp_root("pause-cancel");
+        let vfs = Arc::new(Vfs::with_local_root(&root).unwrap());
+        let root_id = vfs.local_root().to_string();
+
+        let chunk = 64 * 1024;
+        let data: Vec<u8> = vec![3u8; 32 * chunk];
+        let src = Vfs::join(&root_id, "big.bin");
+        vfs.write_range(&src, 0, &data).await.unwrap();
+        let dst = vfs.create_dir(&root_id, "dst").await.unwrap();
+
+        let handle = Arc::new(TransferHandle::new("t-pause", CancelToken::new()));
+        handle.pause();
+
+        let task = {
+            let vfs = vfs.clone();
+            let handle = handle.clone();
+            let dest = dst.id.clone();
+            tokio::spawn(async move {
+                run(
+                    vfs,
+                    vec![src],
+                    dest,
+                    CopyOptions {
+                        chunk_size: chunk,
+                        ..Default::default()
+                    },
+                    handle,
+                )
+                .await
+            })
+        };
+
+        wait_for_state(&handle, TransferState::Paused).await;
+        // 等闸门真正停稳（π 一个 120ms 周期，任务确实停在 wait_while_paused 里）
+        tokio::time::sleep(std::time::Duration::from_millis(260)).await;
+        let frozen = handle.snapshot().bytes_done;
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let snap = handle.snapshot();
+        assert_eq!(snap.state, TransferState::Paused, "{snap:?}");
+        assert_eq!(snap.bytes_done, frozen, "paused task must not advance");
+
+        // 取消优先于暂停：暂停等待中 cancel 在下一拍闸门就生效
+        handle.cancel();
+        wait_for_state(&handle, TransferState::Cancelled).await;
+        task.await.unwrap();
+        // 取消是终态：结束时间落定
+        assert!(handle.snapshot().finished_at_ms.is_some());
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// 暂停 → 解除暂停 → 正常完成，数据完整。
+    #[tokio::test]
+    async fn pause_then_unpause_completes() {
+        let root = temp_root("pause-resume");
+        let vfs = Arc::new(Vfs::with_local_root(&root).unwrap());
+        let root_id = vfs.local_root().to_string();
+
+        let chunk = 64 * 1024;
+        let data: Vec<u8> = vec![7u8; 16 * chunk];
+        let src = Vfs::join(&root_id, "big.bin");
+        vfs.write_range(&src, 0, &data).await.unwrap();
+        let dst = vfs.create_dir(&root_id, "dst").await.unwrap();
+
+        let handle = Arc::new(TransferHandle::new("t-unpause", CancelToken::new()));
+        handle.pause();
+
+        let task = {
+            let vfs = vfs.clone();
+            let handle = handle.clone();
+            let dest = dst.id.clone();
+            tokio::spawn(async move {
+                run(
+                    vfs,
+                    vec![src],
+                    dest,
+                    CopyOptions {
+                        chunk_size: chunk,
+                        ..Default::default()
+                    },
+                    handle,
+                )
+                .await
+            })
+        };
+
+        wait_for_state(&handle, TransferState::Paused).await;
+        // 先等任务真的进入暂停闸门，再解除；pause()/unpause() 是同步改状态的，
+        // 不等的话会与尚未起跑的 run() 竞争（unpause 先把状态拨回 Running）
+        tokio::time::sleep(std::time::Duration::from_millis(260)).await;
+        handle.unpause();
+        task.await.unwrap();
+
+        let snap = handle.snapshot();
+        assert_eq!(snap.state, TransferState::Completed, "{snap:?}");
+        assert_eq!(snap.bytes_done, data.len() as u64);
+        assert_eq!(
+            vfs.read_range(&Vfs::join(&dst.id, "big.bin"), 0, data.len())
+                .await
+                .unwrap(),
+            data
         );
 
         std::fs::remove_dir_all(&root).ok();

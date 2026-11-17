@@ -36,6 +36,10 @@ struct State {
     patch_dav_error: bool,
     auth: Option<(String, String)>,
     flaky_hits: AtomicUsize,
+    /// 123pan-style gateway: answers 200 + the whole body to every GET,
+    /// including requests that carry a Range header.
+    ignore_range: bool,
+    full_gets: AtomicUsize,
 }
 
 impl State {
@@ -55,6 +59,8 @@ impl State {
             patch_dav_error: false,
             auth: None,
             flaky_hits: AtomicUsize::new(0),
+            ignore_range: false,
+            full_gets: AtomicUsize::new(0),
         }
     }
 }
@@ -185,6 +191,10 @@ fn handle(state: &State, request: &mut Request) -> Response<Cursor<Vec<u8>>> {
             };
             let data = data.clone();
             drop(fs);
+            if state.ignore_range && header_value(request, "range").is_some() {
+                state.full_gets.fetch_add(1, AtomicOrdering::SeqCst);
+                return close(Response::from_data(data));
+            }
             match header_value(request, "range").and_then(|r| parse_range(&r)) {
                 Some((from, to)) => {
                     if from as usize >= data.len() {
@@ -681,4 +691,38 @@ async fn percent_encoded_names_roundtrip() {
     let renamed = b.rename(&file.id, "100%.jpg").await.unwrap();
     assert_eq!(renamed.name, "100%.jpg");
     assert_eq!(b.stat(&renamed.id).await.unwrap().size, 3);
+}
+
+#[tokio::test]
+async fn ignored_range_uses_one_progressive_cache() {
+    let mut state = State::new();
+    state.ignore_range = true;
+    let payload: Vec<u8> = (0..1_000_000u32).map(|i| (i % 251) as u8).collect();
+    state
+        .fs
+        .lock()
+        .unwrap()
+        .files
+        .insert("/docs/movie.mp4".to_string(), payload.clone());
+    let (base, state) = mock(state);
+    let b = backend(&base);
+    let file = format!("{}docs/movie.mp4", b.root_id());
+
+    let head = b.read_range(&file, 0, 256 * 1024).await.unwrap();
+    assert_eq!(head, payload[..256 * 1024]);
+    let mid = b.read_range(&file, 500_000, 64 * 1024).await.unwrap();
+    assert_eq!(mid, payload[500_000..500_000 + 64 * 1024]);
+    let tail = b.read_range(&file, 999_000, 8_000).await.unwrap();
+    assert_eq!(tail, payload[999_000..1_000_000]);
+    assert_eq!(
+        state.full_gets.load(AtomicOrdering::SeqCst),
+        1,
+        "whole file must be downloaded exactly once"
+    );
+
+    // Releasing on playback end drops the temp cache; the next read starts over.
+    b.release_stream_cache(&file).await;
+    let again = b.read_range(&file, 0, 1024).await.unwrap();
+    assert_eq!(again, payload[..1024]);
+    assert_eq!(state.full_gets.load(AtomicOrdering::SeqCst), 2);
 }

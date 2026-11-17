@@ -27,7 +27,10 @@ async fn main() {
 
     let t = Instant::now();
     let entries = vfs.list(&root).await.expect("list");
-    println!("vfs.list           {n:>6} entries  {:>8.2} ms", t.elapsed().as_secs_f64() * 1e3);
+    println!(
+        "vfs.list           {n:>6} entries  {:>8.2} ms",
+        t.elapsed().as_secs_f64() * 1e3
+    );
 
     let dbdir = tempfile::tempdir().expect("db");
     let index = Index::open(dbdir.path().join("bench.sqlite")).expect("index");

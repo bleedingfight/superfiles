@@ -3,9 +3,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use rand::RngCore;
-use rustls::client::danger::{
-    HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
-};
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{ClientConfig, DigitallySignedStruct, SignatureScheme};
 use sha2::{Digest, Sha256};
@@ -69,8 +67,16 @@ pub async fn register_at(
     expected: Option<[u8; 32]>,
 ) -> Result<DeviceInfo> {
     let body = serde_json::to_vec(info)?;
-    let (status, response) =
-        request(ip, port, "POST", "/api/localsend/v2/register", &body, identity, expected).await?;
+    let (status, response) = request(
+        ip,
+        port,
+        "POST",
+        "/api/localsend/v2/register",
+        &body,
+        identity,
+        expected,
+    )
+    .await?;
     if status != 200 {
         return Err(Error::Protocol(format!(
             "register returned {status}: {}",
@@ -108,7 +114,9 @@ pub async fn send_files(
                 id: file_id,
                 file_name: entry.name,
                 size: entry.size,
-                file_type: entry.mime.unwrap_or_else(|| "application/octet-stream".into()),
+                file_type: entry
+                    .mime
+                    .unwrap_or_else(|| "application/octet-stream".into()),
                 sha256: None,
                 preview: None,
                 metadata: None,
@@ -178,8 +186,7 @@ async fn tls_connect(
         Ok(stream) => Ok(stream),
         Err(first) => {
             let tcp = TcpStream::connect(SocketAddr::new(ip, port)).await?;
-            let name = ServerName::try_from("localsend.local")
-                .map_err(|_| Error::Io(first))?;
+            let name = ServerName::try_from("localsend.local").map_err(|_| Error::Io(first))?;
             connector.connect(name, tcp).await.map_err(Error::Io)
         }
     }

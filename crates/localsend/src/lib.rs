@@ -13,10 +13,10 @@ mod http;
 mod protocol;
 mod server;
 
-pub use client::{DiscoveredPeer, LocalSendClient};
 pub use cert::Identity;
+pub use client::{DiscoveredPeer, LocalSendClient};
 pub use error::{Error, Result};
-pub use protocol::{DeviceInfo, DeviceType, Files, PreparedFile, PrepareUpload};
+pub use protocol::{DeviceInfo, DeviceType, Files, PrepareUpload, PreparedFile};
 pub use server::{LocalSendConfig, LocalSendService};
 
 /// Default TCP/UDP port from the LocalSend specification.

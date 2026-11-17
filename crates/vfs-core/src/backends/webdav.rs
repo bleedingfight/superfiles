@@ -17,12 +17,18 @@
 mod url;
 mod xml;
 
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::time::Duration;
+use std::collections::HashMap;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use reqwest::header;
 use reqwest::{Method, RequestBuilder, Response, StatusCode};
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Notify;
 
 use crate::backend::Backend;
 use crate::capabilities::Capabilities;
@@ -74,6 +80,308 @@ impl PartialMode {
     }
 }
 
+/// How long a finished/idle playback cache may linger without reads.
+const PLAYBACK_IDLE_TTL: Duration = Duration::from_secs(120);
+
+/// Servers that ignore `Range` (return `200` + the whole file) would otherwise
+/// make every 256 KiB read download the entire video again. Keep one sequential
+/// copy on disk and serve all ranged reads from it: playback starts as soon as
+/// the first chunk arrives, the download continues in the background, and the
+/// temp file is deleted when playback ends (release) or after the idle TTL.
+#[derive(Default)]
+struct PlaybackCache {
+    entries: Mutex<HashMap<String, Arc<PlaybackEntry>>>,
+    sweeping: AtomicBool,
+}
+
+struct PlaybackEntry {
+    path: PathBuf,
+    state: Mutex<PlaybackState>,
+    data: Notify,
+    cancel: Notify,
+    cancelled: AtomicBool,
+}
+
+struct PlaybackState {
+    available: u64,
+    done: bool,
+    error: Option<String>,
+    last_access: Instant,
+    readers: u64,
+}
+
+impl Drop for PlaybackEntry {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+impl PlaybackEntry {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            state: Mutex::new(PlaybackState {
+                available: 0,
+                done: false,
+                error: None,
+                last_access: Instant::now(),
+                readers: 0,
+            }),
+            data: Notify::new(),
+            cancel: Notify::new(),
+            cancelled: AtomicBool::new(false),
+        }
+    }
+
+    fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+        self.cancel.notify_waiters();
+        self.data.notify_waiters();
+    }
+
+    fn fail(&self, message: String) {
+        let mut state = self.state.lock().unwrap();
+        state.error = Some(message);
+        state.done = true;
+        state.last_access = Instant::now();
+        drop(state);
+        self.data.notify_waiters();
+    }
+
+    async fn read(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
+        if len == 0 {
+            return Ok(Vec::new());
+        }
+        {
+            let mut state = self.state.lock().unwrap();
+            state.readers += 1;
+            state.last_access = Instant::now();
+        }
+        let result = self.read_inner(offset, len).await;
+        {
+            let mut state = self.state.lock().unwrap();
+            state.readers = state.readers.saturating_sub(1);
+            state.last_access = Instant::now();
+        }
+        result
+    }
+
+    async fn read_inner(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
+        let need = offset.saturating_add(len as u64);
+        loop {
+            if self.cancelled.load(Ordering::SeqCst) {
+                return Err(VfsError::Cancelled);
+            }
+            let (ready, done, error, available) = {
+                let mut state = self.state.lock().unwrap();
+                state.last_access = Instant::now();
+                (
+                    state.available >= need,
+                    state.done,
+                    state.error.clone(),
+                    state.available,
+                )
+            };
+            if let Some(message) = error {
+                return Err(VfsError::Io(message));
+            }
+            if ready || done {
+                if offset >= available {
+                    return Ok(Vec::new());
+                }
+                let count = (need.min(available) - offset) as usize;
+                return read_cache_file(&self.path, offset, count).await;
+            }
+
+            let notified = self.data.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            let (ready, done) = {
+                let state = self.state.lock().unwrap();
+                (state.available >= need, state.done)
+            };
+            if ready || done {
+                continue;
+            }
+            tokio::select! {
+                _ = &mut notified => {}
+                _ = self.cancel.notified() => {
+                    if self.cancelled.load(Ordering::SeqCst) {
+                        return Err(VfsError::Cancelled);
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn read_cache_file(path: &PathBuf, offset: u64, len: usize) -> Result<Vec<u8>> {
+    let path = path.clone();
+    tokio::task::spawn_blocking(move || -> std::io::Result<Vec<u8>> {
+        let mut file = std::fs::File::open(&path)?;
+        file.seek(SeekFrom::Start(offset))?;
+        let mut buf = vec![0u8; len];
+        let mut filled = 0;
+        while filled < len {
+            let read = file.read(&mut buf[filled..])?;
+            if read == 0 {
+                break;
+            }
+            filled += read;
+        }
+        buf.truncate(filled);
+        Ok(buf)
+    })
+    .await
+    .map_err(|err| VfsError::Io(format!("playback cache read join failed: {err}")))?
+    .map_err(VfsError::io)
+}
+
+async fn write_cache(entry: Arc<PlaybackEntry>, mut response: Response) {
+    let mut file = match tokio::fs::File::create(&entry.path).await {
+        Ok(file) => file,
+        Err(err) => {
+            entry.fail(format!("playback cache create failed: {err}"));
+            return;
+        }
+    };
+    let mut written = 0u64;
+    loop {
+        if entry.cancelled.load(Ordering::SeqCst) {
+            return;
+        }
+        let chunk = tokio::select! {
+            _ = entry.cancel.notified() => return,
+            chunk = response.chunk() => chunk,
+        };
+        match chunk {
+            Ok(Some(bytes)) => {
+                if let Err(err) = file.write_all(&bytes).await {
+                    entry.fail(format!("playback cache write failed: {err}"));
+                    return;
+                }
+                written += bytes.len() as u64;
+                {
+                    let mut state = entry.state.lock().unwrap();
+                    state.available = written;
+                    state.last_access = Instant::now();
+                }
+                entry.data.notify_waiters();
+            }
+            Ok(None) => {
+                let _ = file.flush().await;
+                {
+                    let mut state = entry.state.lock().unwrap();
+                    state.done = true;
+                    state.last_access = Instant::now();
+                }
+                entry.data.notify_waiters();
+                return;
+            }
+            Err(err) => {
+                entry.fail(format!("playback cache download failed: {err}"));
+                return;
+            }
+        }
+    }
+}
+
+impl PlaybackCache {
+    fn get(&self, id: &str) -> Option<Arc<PlaybackEntry>> {
+        let entry = self.entries.lock().unwrap().get(id).cloned();
+        if let Some(entry) = &entry {
+            entry.state.lock().unwrap().last_access = Instant::now();
+        }
+        entry
+    }
+
+    fn install(&self, id: &str, response: Response) -> Arc<PlaybackEntry> {
+        let mut entries = self.entries.lock().unwrap();
+        if let Some(existing) = entries.get(id) {
+            return existing.clone();
+        }
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!(
+            "superfiles-play-{}-{nanos}-{}.bin",
+            std::process::id(),
+            SEQ.fetch_add(1, Ordering::Relaxed),
+        ));
+        let entry = Arc::new(PlaybackEntry::new(path));
+        entries.insert(id.to_string(), entry.clone());
+        drop(entries);
+        let writer = entry.clone();
+        tokio::spawn(async move { write_cache(writer, response).await });
+        entry
+    }
+
+    fn release(&self, id: &str) {
+        let entry = self.entries.lock().unwrap().remove(id);
+        if let Some(entry) = entry {
+            entry.cancel();
+        }
+    }
+
+    fn release_prefix(&self, id: &str) {
+        let prefix = format!("{id}/");
+        let keys: Vec<String> = {
+            let entries = self.entries.lock().unwrap();
+            entries
+                .keys()
+                .filter(|key| key.as_str() == id || key.starts_with(&prefix))
+                .cloned()
+                .collect()
+        };
+        for key in keys {
+            self.release(&key);
+        }
+    }
+
+    fn prune_idle(&self) {
+        let now = Instant::now();
+        let expired: Vec<Arc<PlaybackEntry>> = {
+            let mut entries = self.entries.lock().unwrap();
+            let mut expired = Vec::new();
+            entries.retain(|_, entry| {
+                let (idle, readers) = {
+                    let state = entry.state.lock().unwrap();
+                    (
+                        now.saturating_duration_since(state.last_access) >= PLAYBACK_IDLE_TTL,
+                        state.readers,
+                    )
+                };
+                if idle && readers == 0 {
+                    expired.push(entry.clone());
+                    false
+                } else {
+                    true
+                }
+            });
+            expired
+        };
+        for entry in expired {
+            entry.cancel();
+        }
+    }
+
+    fn ensure_sweeper(cache: &Arc<Self>) {
+        if cache.sweeping.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let weak = Arc::downgrade(cache);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                let Some(cache) = weak.upgrade() else { break };
+                cache.prune_idle();
+            }
+        });
+    }
+}
+
 /// A single WebDAV mount (server + credentials). Mount it via [`crate::Vfs::mount`].
 pub struct WebdavBackend {
     client: reqwest::Client,
@@ -81,6 +389,7 @@ pub struct WebdavBackend {
     root: RootUrl,
     /// Negotiated partial-write mode; probed lazily on the first ranged write.
     partial_mode: AtomicU8,
+    playback: Arc<PlaybackCache>,
 }
 
 impl WebdavBackend {
@@ -90,6 +399,12 @@ impl WebdavBackend {
         let root = RootUrl::parse(base_url)?;
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(15))
+            // 每个请求的总体超时（含读）：否则传输中途网络抽风（Wi-Fi 漫游、
+            // NAS 瞬断）会让 read_range 无限期挂起——大文件复制的「传输一段
+            // 时间后卡死」正是这个形态：进度停在某一刻、状态永远是 running。
+            // 1 MiB 块（COPY_CHUNK_SIZE）在最差的局域网也能在 120s 内回包；
+            // 超时把挂起变成可重试的失败，让任务正确进入 Failed。
+            .timeout(Duration::from_secs(120))
             .user_agent(concat!("SuperFiles/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|e| VfsError::Io(format!("http client init failed: {e}")))?;
@@ -98,6 +413,7 @@ impl WebdavBackend {
             auth,
             root,
             partial_mode: AtomicU8::new(PartialMode::Unknown as u8),
+            playback: Arc::new(PlaybackCache::default()),
         })
     }
 
@@ -484,7 +800,10 @@ impl Backend for WebdavBackend {
             })
             .await?;
         match resp.status().as_u16() {
-            200..=299 => Ok(()),
+            200..=299 => {
+                self.playback.release_prefix(id);
+                Ok(())
+            }
             _ => Err(map_status(resp.status(), &dav)),
         }
     }
@@ -507,7 +826,10 @@ impl Backend for WebdavBackend {
             })
             .await?;
         match resp.status().as_u16() {
-            200..=299 => self.entry_at(&new_dav).await,
+            200..=299 => {
+                self.playback.release_prefix(id);
+                self.entry_at(&new_dav).await
+            }
             _ => Err(map_status(resp.status(), &dav)),
         }
     }
@@ -515,6 +837,11 @@ impl Backend for WebdavBackend {
     async fn read_range(&self, id: &str, offset: u64, len: usize) -> Result<Vec<u8>> {
         if len == 0 {
             return Ok(Vec::new());
+        }
+        // A progressive cache exists only for servers that ignored Range; all
+        // concurrent player connections read the same single download.
+        if let Some(entry) = self.playback.get(id) {
+            return entry.read(offset, len).await;
         }
         let dav = resolve_id(&self.root, id)?;
         let end = offset.saturating_add(len as u64).saturating_sub(1);
@@ -532,15 +859,13 @@ impl Backend for WebdavBackend {
                 bytes.truncate(len);
                 Ok(bytes)
             }
-            // Server ignored the Range header: slice client side.
+            // Server ignored Range and is sending the whole file. Download it
+            // once into a temp cache and serve this (and every later) read from
+            // there; otherwise each 256 KiB read re-downloads the whole video.
             200 => {
-                let bytes = resp.bytes().await.map_err(net_err)?;
-                if offset >= bytes.len() as u64 {
-                    return Ok(Vec::new());
-                }
-                let from = offset as usize;
-                let to = ((offset + len as u64) as usize).min(bytes.len());
-                Ok(bytes[from..to].to_vec())
+                let entry = self.playback.install(id, resp);
+                PlaybackCache::ensure_sweeper(&self.playback);
+                entry.read(offset, len).await
             }
             // Contract §2: out-of-range offset yields an empty read.
             416 => Ok(Vec::new()),
@@ -548,7 +873,13 @@ impl Backend for WebdavBackend {
         }
     }
 
+    async fn release_stream_cache(&self, id: &str) {
+        self.playback.release(id);
+    }
+
     async fn write_range(&self, id: &str, offset: u64, data: &[u8]) -> Result<()> {
+        // Any write invalidates a playback cache for this path.
+        self.playback.release(id);
         let dav = resolve_id(&self.root, id)?;
         let url = self.root.url_for(&dav);
         let existing = match self.entry_at(&dav).await {
@@ -617,7 +948,12 @@ impl Backend for WebdavBackend {
         let dav = resolve_id(&self.root, id)?;
         let mut resp = self
             .send(true, || {
-                let req = self.request(Method::GET, self.root.url_for(&dav));
+                // 流式全量导出会跑很久，客户端全局的请求超时（为防传输
+                // 中途挂死而设）会掐断它；这里按请求放大到 24h（该版本
+                // 无法显式关闭），挂死保护由每块的 cancel 轮询负责。
+                let req = self
+                    .request(Method::GET, self.root.url_for(&dav))
+                    .timeout(Duration::from_secs(24 * 3600));
                 if offset > 0 {
                     req.header(header::RANGE, format!("bytes={offset}-"))
                 } else {
@@ -649,6 +985,18 @@ impl Backend for WebdavBackend {
             total += bytes.len() as u64;
         }
         Ok(total)
+    }
+}
+
+impl Drop for WebdavBackend {
+    fn drop(&mut self) {
+        let entries: Vec<Arc<PlaybackEntry>> =
+            std::mem::take(&mut *self.playback.entries.lock().unwrap())
+                .into_values()
+                .collect();
+        for entry in entries {
+            entry.cancel();
+        }
     }
 }
 

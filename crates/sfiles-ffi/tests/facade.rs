@@ -94,7 +94,9 @@ fn unsupported_scheme_is_reported() {
 fn nearby_share_lifecycle() {
     let root = temp_dir("share");
     let core = SuperFiles::open(root.to_string_lossy().into_owned(), None).unwrap();
-    let file = core.create_file(core.root_id(), "photo.jpg".into()).unwrap();
+    let file = core
+        .create_file(core.root_id(), "photo.jpg".into())
+        .unwrap();
     core.write_bytes(file.id.clone(), 0, vec![1u8; 1024])
         .unwrap();
 
@@ -111,7 +113,11 @@ fn nearby_share_lifecycle() {
     // 正常启动 → 链接是局域网 http + token 路径；再次启动替换且可显式关闭。
     let info = core.start_share(vec![file.id]).unwrap();
     assert_eq!(info.file_count, 1);
-    assert!(info.url.starts_with("http://") && info.url.ends_with('/'), "url={}", info.url);
+    assert!(
+        info.url.starts_with("http://") && info.url.ends_with('/'),
+        "url={}",
+        info.url
+    );
     let info2 = core.start_share(vec![]).err(); // 替换前先报错：空列表不动旧会话
     assert!(info2.is_some());
     assert!(core.stop_share());
@@ -148,14 +154,16 @@ fn list_writes_through_to_the_offline_cache() {
     assert_eq!(cached.entries.len(), 2);
     assert!(cached.listed_at_ms.is_some());
 
-    // 删除对账：实时列举后消失的条目不再出现在缓存里。
+    // 删除与索引联动：删除返回时索引行已经没了，缓存里也立刻消失
+    // （不再需要等下一次实时列举做对账）。
     core.remove(docs.id.clone() + "/a.txt", false).unwrap();
-    assert_eq!(core.list_cached(docs.id.clone()).entries.len(), 2);
+    assert_eq!(core.list_cached(docs.id.clone()).entries.len(), 1);
     core.list(docs.id.clone()).unwrap();
     assert_eq!(core.list_cached(docs.id.clone()).entries.len(), 1);
 
     // 无索引的内核：list_cached 安全返回空（离线浏览不可用）。
-    let no_index = SuperFiles::open(temp_dir("no-index").to_string_lossy().into_owned(), None).unwrap();
+    let no_index =
+        SuperFiles::open(temp_dir("no-index").to_string_lossy().into_owned(), None).unwrap();
     assert!(no_index.list_cached(no_index.root_id()).entries.is_empty());
 
     std::fs::remove_dir_all(&root).ok();
@@ -334,6 +342,52 @@ fn resume_flow_through_the_ffi() {
         );
         std::thread::sleep(Duration::from_millis(10));
     }
+
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::remove_dir_all(&db_dir).ok();
+}
+
+/// 文件系统写操作与索引必须联动：删掉文件后立刻搜不到，改名后旧名字立刻消失。
+#[test]
+fn mutations_update_the_index_immediately() {
+    let root = temp_dir("mutate");
+    let db_dir = temp_dir("mutate-db");
+    let db = db_dir.join("index.sqlite");
+    let core: Arc<SuperFiles> = SuperFiles::open(
+        root.to_string_lossy().into_owned(),
+        Some(db.to_string_lossy().into_owned()),
+    )
+    .unwrap();
+    let root_id = core.root_id();
+
+    // 建文件即入索引（不需要再跑一次 index_dir）
+    let file = core
+        .create_file(root_id.clone(), "hello.jpg".into())
+        .unwrap();
+    assert!(
+        core.search("hello".into(), 10)
+            .unwrap()
+            .iter()
+            .any(|e| e.id == file.id),
+        "newly created file should be searchable immediately"
+    );
+    assert!(core.index_prefix_count(root_id.clone()) >= 1);
+
+    // 改名：旧名字立刻搜不到，新名字立刻能搜到
+    let renamed = core.rename(file.id.clone(), "world.jpg".into()).unwrap();
+    assert!(
+        core.search("hello".into(), 10).unwrap().is_empty(),
+        "old name must disappear right after rename"
+    );
+    assert!(!core.search("world".into(), 10).unwrap().is_empty());
+
+    // 删除：返回前索引行就没了
+    core.remove(renamed.id.clone(), false).unwrap();
+    assert!(
+        core.search("world".into(), 10).unwrap().is_empty(),
+        "deleted file must not be searchable"
+    );
+    assert_eq!(core.index_prefix_count(root_id.clone()), 0);
 
     std::fs::remove_dir_all(&root).ok();
     std::fs::remove_dir_all(&db_dir).ok();

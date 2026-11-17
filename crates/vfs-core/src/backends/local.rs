@@ -60,6 +60,13 @@ impl LocalBackend {
         };
         let normalized = normalize(&joined);
         if !normalized.starts_with(&self.root) {
+            // iOS app containers move to a new UUID on reinstall/update. Stored
+            // absolute ids (resume records, favorites, recents, cached index
+            // hits) then point at the old container. Rebase those ids onto the
+            // current root instead of failing every operation with EACCES.
+            if let Some(rebased) = rebase_moved_container(&self.root, &normalized) {
+                return Ok(rebased);
+            }
             return Err(VfsError::PermissionDenied(format!(
                 "path escapes local root: {}",
                 normalized.display()
@@ -67,6 +74,32 @@ impl LocalBackend {
         }
         Ok(normalized)
     }
+}
+
+/// Rebase an id left over from a previous iOS app container onto `root`.
+///
+/// Only paths inside `.../Containers/Data/Application/...` are considered, so
+/// the jail on other platforms is unchanged. The candidate is always built
+/// under `root`, so this can never widen access outside the jail.
+fn rebase_moved_container(root: &Path, path: &Path) -> Option<PathBuf> {
+    let text = path.to_string_lossy();
+    if !text.contains("/Containers/Data/Application/") {
+        return None;
+    }
+    let anchor = root.file_name()?.to_str()?;
+    if anchor.is_empty() {
+        return None;
+    }
+    let marker = format!("/{anchor}");
+    let pos = text.find(&marker)?;
+    let suffix = &text[pos + marker.len()..];
+    let candidate = if suffix.is_empty() {
+        root.to_path_buf()
+    } else {
+        root.join(suffix.trim_start_matches('/'))
+    };
+    let candidate = normalize(&candidate);
+    candidate.starts_with(root).then_some(candidate)
 }
 
 /// Lexically normalize a path (no filesystem access, so it works for paths that
@@ -447,6 +480,27 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, VfsError::PermissionDenied(_)));
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn ios_container_move_rebases_old_ids() {
+        let root = Path::new("/private/var/mobile/Containers/Data/Application/NEW/Documents");
+        let old =
+            Path::new("/private/var/mobile/Containers/Data/Application/OLD/Documents/a/b.txt");
+        assert_eq!(
+            rebase_moved_container(root, old).unwrap(),
+            root.join("a/b.txt")
+        );
+        assert_eq!(
+            rebase_moved_container(
+                root,
+                Path::new("/private/var/mobile/Containers/Data/Application/OLD/Documents"),
+            )
+            .unwrap(),
+            root
+        );
+        assert!(rebase_moved_container(root, Path::new("/etc/passwd")).is_none());
+        assert!(rebase_moved_container(root, Path::new("/tmp/Documents/secret")).is_none());
     }
 
     #[tokio::test]

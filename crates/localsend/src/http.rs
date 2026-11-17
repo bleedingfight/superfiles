@@ -118,9 +118,8 @@ pub async fn read_chunked<R: AsyncBufRead + Unpin>(
             break;
         }
         let size_str = line.trim().split(';').next().unwrap_or("").trim();
-        let size = usize::from_str_radix(size_str, 16).map_err(|_| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, "bad chunk size")
-        })?;
+        let size = usize::from_str_radix(size_str, 16)
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "bad chunk size"))?;
         if size == 0 {
             // Consume trailers until the blank line.
             loop {
@@ -243,7 +242,10 @@ mod tests {
             query_param("/x?sessionId=abc&token=1%2F2", "token").as_deref(),
             Some("1/2")
         );
-        assert_eq!(query_param("/x?pin=123456", "pin").as_deref(), Some("123456"));
+        assert_eq!(
+            query_param("/x?pin=123456", "pin").as_deref(),
+            Some("123456")
+        );
         assert_eq!(query_param("/x", "pin"), None);
     }
 }

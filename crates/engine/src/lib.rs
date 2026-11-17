@@ -7,4 +7,4 @@ pub use handle::{TransferHandle, TransferSnapshot, TransferState};
 // without depending on sfiles-index themselves.
 pub use sfiles_index::StoredTransfer;
 pub use transfer::{run, run_resumable, ConflictPolicy, CopyOptions, CopyRuntimeState};
-pub use zip::{compress_zip, ZipMethod};
+pub use zip::{compress_zip, extract_zip, ZipMethod};

@@ -102,6 +102,58 @@ impl Index {
         }
         conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_entries_source ON entries(source)")
             .map_err(db_err)?;
+        // 分类聚合：单独存小写扩展名并建索引，避免 LIKE '%.jpg' 全表扫。
+        let has_ext = conn
+            .query_row(
+                "SELECT 1 FROM pragma_table_info('entries') WHERE name = 'ext'",
+                [],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(db_err)?
+            .is_some();
+        if !has_ext {
+            conn.execute_batch("ALTER TABLE entries ADD COLUMN ext TEXT")
+                .map_err(db_err)?;
+        }
+        // 自愈：扩展名必须由 Rust 的 ext_of 统一计算（最后一个小数点）。
+        // 旧版本用 SQL 的“第一个点”回填过，会留下 `tar.gz`、`nomedia` 这类脏值；
+        // 用 user_version 做一次性重算（点文件不带点，无法靠 LIKE '%.%' 识别）。
+        let schema_version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(db_err)?;
+        if schema_version < 2 {
+            let rows: Vec<(String, String)> = {
+                let mut stmt = conn
+                    .prepare("SELECT id, name FROM entries")
+                    .map_err(db_err)?;
+                let iter = stmt
+                    .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                    .map_err(db_err)?;
+                let mut out = Vec::new();
+                for row in iter {
+                    out.push(row.map_err(db_err)?);
+                }
+                out
+            };
+            let mut upd = conn
+                .prepare("UPDATE entries SET ext = ?1 WHERE id = ?2")
+                .map_err(db_err)?;
+            for (id, name) in rows {
+                upd.execute(params![ext_of(&name), id]).map_err(db_err)?;
+            }
+        }
+        // 分类页同时按扩展名过滤、按修改时间倒序：复合索引让 SQLite 直接
+        // 走索引区间，避免把命中行全部取出再排序。
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_entries_ext ON entries(ext);
+             CREATE INDEX IF NOT EXISTS idx_entries_ext_modified ON entries(ext, modified_ms DESC);",
+        )
+        .map_err(db_err)?;
+        if schema_version < 2 {
+            conn.pragma_update(None, "user_version", 2)
+                .map_err(db_err)?;
+        }
         conn.execute_batch(transfers::TRANSFERS_SCHEMA)
             .map_err(db_err)?;
         // Schema v1 (moving tasks): older DBs predate the is_move column.
@@ -197,6 +249,14 @@ impl Index {
             params![id, opened_ms],
         )
         .map_err(db_err)?;
+        Ok(())
+    }
+
+    /// Drop one recent-open record (does not touch the file itself).
+    pub fn remove_recent(&self, id: &str) -> Result<()> {
+        let conn = self.lock()?;
+        conn.execute("DELETE FROM recent_opens WHERE id = ?1", params![id])
+            .map_err(db_err)?;
         Ok(())
     }
 
@@ -380,6 +440,8 @@ impl Index {
                 }
                 tx.execute("DELETE FROM dir_states WHERE id = ?1", params![gone])
                     .map_err(db_err)?;
+                tx.execute("DELETE FROM list_states WHERE id = ?1", params![gone])
+                    .map_err(db_err)?;
                 removed += 1;
             }
         }
@@ -418,7 +480,9 @@ impl Index {
                 .prepare("DELETE FROM entries_fts WHERE rowid = ?1")
                 .map_err(db_err)?;
             let mut fts_insert = tx
-                .prepare("INSERT INTO entries_fts (rowid, id, name, pinyin) VALUES (?1, ?2, ?3, ?4)")
+                .prepare(
+                    "INSERT INTO entries_fts (rowid, id, name, pinyin) VALUES (?1, ?2, ?3, ?4)",
+                )
                 .map_err(db_err)?;
             for entry in entries {
                 bind_upsert(&mut upsert_stmt, source, entry)?;
@@ -445,9 +509,11 @@ impl Index {
         let mut conn = self.lock()?;
         let tx = conn.transaction().map_err(db_err)?;
         let rowid: Option<i64> = tx
-            .query_row("SELECT rowid FROM entries WHERE id = ?1", params![id], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT rowid FROM entries WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
             .optional()
             .map_err(db_err)?;
         tx.execute("DELETE FROM entries WHERE id = ?1", params![id])
@@ -459,10 +525,146 @@ impl Index {
         tx.commit().map_err(db_err)
     }
 
+    /// 某个存储根（`id` 本身或其子树）在索引里的条目数。
+    pub fn count_under_prefix(&self, prefix: &str) -> Result<u64> {
+        let prefix = normalize_prefix(prefix);
+        let conn = self.lock()?;
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM entries
+                 WHERE id = ?1 OR substr(id, 1, length(?1) + 1) = ?1 || '/'",
+                params![prefix],
+                |row| row.get(0),
+            )
+            .map_err(db_err)?;
+        Ok(count as u64)
+    }
+
+    /// 删除 `id` 及其整棵子树（含 FTS 行与目录扫描状态）。返回删除行数。
+    /// 文件系统删除后立即调用：保证搜索/分类页马上查不到已删文件。
+    pub fn remove_subtree(&self, id: &str) -> Result<u64> {
+        let id = normalize_prefix(id);
+        let mut conn = self.lock()?;
+        let tx = conn.transaction().map_err(db_err)?;
+        let ids: Vec<String> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT id FROM entries
+                     WHERE id = ?1 OR substr(id, 1, length(?1) + 1) = ?1 || '/'",
+                )
+                .map_err(db_err)?;
+            let rows = stmt
+                .query_map(params![id], |row| row.get::<_, String>(0))
+                .map_err(db_err)?;
+            rows.collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(db_err)?
+        };
+        let mut removed = 0u64;
+        for gone in ids {
+            let rowid: Option<i64> = tx
+                .query_row(
+                    "SELECT rowid FROM entries WHERE id = ?1",
+                    params![gone],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(db_err)?;
+            tx.execute("DELETE FROM entries WHERE id = ?1", params![gone])
+                .map_err(db_err)?;
+            if let Some(rowid) = rowid {
+                tx.execute("DELETE FROM entries_fts WHERE rowid = ?1", params![rowid])
+                    .map_err(db_err)?;
+            }
+            tx.execute("DELETE FROM dir_states WHERE id = ?1", params![gone])
+                .map_err(db_err)?;
+            tx.execute("DELETE FROM list_states WHERE id = ?1", params![gone])
+                .map_err(db_err)?;
+            removed += 1;
+        }
+        tx.commit().map_err(db_err)?;
+        Ok(removed)
+    }
+
+    /// 目录改名/移动：把 `old_id` 及整棵子树的 id/parent 前缀改写成
+    /// `new_id`，同时同步 FTS 的 id 列与目录扫描状态。纯 SQL，不碰文件系统。
+    /// 返回改写的行数；调用方随后 [`upsert`](Self::upsert) 新的根条目刷新元数据。
+    pub fn rekey_subtree(&self, old_id: &str, new_id: &str) -> Result<u64> {
+        let old_id = normalize_prefix(old_id);
+        if old_id == new_id {
+            return Ok(0);
+        }
+        let mut conn = self.lock()?;
+        let tx = conn.transaction().map_err(db_err)?;
+        let rows: Vec<(String, Option<String>)> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT id, parent FROM entries
+                     WHERE id = ?1 OR substr(id, 1, length(?1) + 1) = ?1 || '/'",
+                )
+                .map_err(db_err)?;
+            let iter = stmt
+                .query_map(params![old_id], |row| Ok((row.get(0)?, row.get(1)?)))
+                .map_err(db_err)?;
+            iter.collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(db_err)?
+        };
+        let mut count = 0u64;
+        for (id, parent) in rows {
+            let suffix = &id[old_id.len()..];
+            let new_child = format!("{new_id}{suffix}");
+            if new_child == id {
+                continue;
+            }
+            let new_parent = match parent {
+                Some(p) if p == old_id => new_id.to_string(),
+                Some(p) => match p.strip_prefix(old_id) {
+                    Some(rest) => format!("{new_id}{rest}"),
+                    None => p,
+                },
+                None => String::new(),
+            };
+            let rowid: Option<i64> = tx
+                .query_row(
+                    "SELECT rowid FROM entries WHERE id = ?1",
+                    params![id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(db_err)?;
+            tx.execute(
+                "UPDATE entries SET id = ?1, parent = ?2 WHERE id = ?3",
+                params![new_child, new_parent, id],
+            )
+            .map_err(db_err)?;
+            if let Some(rowid) = rowid {
+                tx.execute(
+                    "UPDATE entries_fts SET id = ?1 WHERE rowid = ?2",
+                    params![new_child, rowid],
+                )
+                .map_err(db_err)?;
+            }
+            tx.execute(
+                "UPDATE OR REPLACE dir_states SET id = ?1 WHERE id = ?2",
+                params![new_child, id],
+            )
+            .map_err(db_err)?;
+            count += 1;
+        }
+        tx.commit().map_err(db_err)?;
+        Ok(count)
+    }
+
     pub fn clear(&self) -> Result<()> {
         let conn = self.lock()?;
-        conn.execute_batch("DELETE FROM entries; DELETE FROM entries_fts;")
-            .map_err(db_err)
+        // 必须连扫描账本一起清：否则 dir_states/list_states 还留着，
+        // 下一次「重建」会以为目录没变化而整棵跳过（真机踩过）。
+        conn.execute_batch(
+            "DELETE FROM entries;
+             DELETE FROM entries_fts;
+             DELETE FROM dir_states;
+             DELETE FROM list_states;",
+        )
+        .map_err(db_err)
     }
 
     pub fn count(&self) -> Result<u64> {
@@ -481,6 +683,64 @@ impl Index {
     /// query matches everything (M0 behavior).
     pub fn search(&self, query: &str, limit: u32) -> Result<Vec<Entry>> {
         self.search_filtered(None, query, limit)
+    }
+
+    /// Count files whose extension matches any of `exts` (case-insensitive).
+    /// Backed by a single SQL scan, so the home screen can show real numbers
+    /// without walking the tree.
+    pub fn count_by_exts(&self, exts: &[String], include_hidden: bool) -> Result<u64> {
+        if exts.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.lock()?;
+        let (clause, binds) = ext_predicate(exts);
+        if clause.is_empty() {
+            return Ok(0);
+        }
+        let hidden = hidden_clause(include_hidden);
+        let sql = format!("SELECT COUNT(*) FROM entries e WHERE e.kind = 0 AND ({clause}){hidden}");
+        let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+        let count: i64 = stmt
+            .query_row(rusqlite::params_from_iter(binds.iter()), |row| row.get(0))
+            .map_err(db_err)?;
+        Ok(count as u64)
+    }
+
+    /// List files matching `exts`, newest first. `limit` caps the result so a
+    /// huge category cannot stall the UI.
+    pub fn list_by_exts(&self, exts: &[String], limit: u32) -> Result<Vec<Entry>> {
+        self.list_by_exts_page(exts, 0, limit, true)
+    }
+
+    /// 分页版本（`offset` 为空表示从头）：首屏只取几百条，剩余由后台续载。
+    pub fn list_by_exts_page(
+        &self,
+        exts: &[String],
+        offset: u32,
+        limit: u32,
+        include_hidden: bool,
+    ) -> Result<Vec<Entry>> {
+        if exts.is_empty() || limit == 0 {
+            return Ok(Vec::new());
+        }
+        let conn = self.lock()?;
+        let (clause, binds) = ext_predicate(exts);
+        if clause.is_empty() {
+            return Ok(Vec::new());
+        }
+        let hidden = hidden_clause(include_hidden);
+        let sql = format!(
+            "SELECT {ENTRY_COLUMNS}
+             FROM entries e
+             WHERE e.kind = 0 AND ({clause}){hidden}
+             ORDER BY e.modified_ms DESC
+             LIMIT {limit} OFFSET {offset}"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(binds.iter()), row_to_entry)
+            .map_err(db_err)?;
+        collect_rows(rows)
     }
 
     /// Like [`search`](Self::search) but only returns entries written under
@@ -551,10 +811,10 @@ impl Index {
 
 /// UPSERT shared by `upsert_all_for_source` and `upsert`; bound with
 /// [`bind_upsert`].
-const UPSERT_SQL: &str = r#"INSERT INTO entries (id, parent, name, kind, size, modified_ms, mime, hidden, readonly, source)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+const UPSERT_SQL: &str = r#"INSERT INTO entries (id, parent, name, ext, kind, size, modified_ms, mime, hidden, readonly, source)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
      ON CONFLICT(id) DO UPDATE SET
-       parent=excluded.parent, name=excluded.name, kind=excluded.kind,
+       parent=excluded.parent, name=excluded.name, ext=excluded.ext, kind=excluded.kind,
        size=excluded.size, modified_ms=excluded.modified_ms, mime=excluded.mime,
        hidden=excluded.hidden, readonly=excluded.readonly, source=excluded.source"#;
 
@@ -567,6 +827,7 @@ fn bind_upsert(stmt: &mut rusqlite::Statement<'_>, source: &str, entry: &Entry) 
         entry.id,
         entry.parent,
         entry.name,
+        ext_of(&entry.name),
         kind_code(entry.kind),
         entry.size as i64,
         entry.modified_ms,
@@ -756,6 +1017,55 @@ fn longest_alnum_run(query: &str) -> usize {
     best
 }
 
+/// `lower(name) LIKE '%.jpg' OR ...` plus the bound patterns.
+fn ext_predicate(exts: &[String]) -> (String, Vec<String>) {
+    let mut binds = Vec::new();
+    for raw in exts {
+        let e = raw.trim().trim_start_matches('.').to_lowercase();
+        if !e.is_empty() {
+            binds.push(e);
+        }
+    }
+    if binds.is_empty() {
+        return (String::new(), binds);
+    }
+    let placeholders = vec!["?"; binds.len()].join(",");
+    (format!("e.ext IN ({placeholders})"), binds)
+}
+
+/// 存储根/目录前缀规范化：去掉末尾多余的 `/`（`webdav://host/` → `webdav://host`）。
+/// 保留协议头的 `//` 和系统根 `/`，否则前缀匹配会变成 `webdav://host//…` 而永远命中 0 行。
+fn normalize_prefix(id: &str) -> &str {
+    if id.len() > 1 && id.ends_with('/') {
+        let trimmed = id.trim_end_matches('/');
+        if trimmed.ends_with(':') {
+            id
+        } else {
+            trimmed
+        }
+    } else {
+        id
+    }
+}
+
+/// 与 UI 的「显示隐藏文件」开关保持一致：默认不把隐藏文件和点文件算进分类。
+fn hidden_clause(include_hidden: bool) -> &'static str {
+    if include_hidden {
+        ""
+    } else {
+        " AND e.hidden = 0 AND e.name NOT LIKE '.%'"
+    }
+}
+
+/// 小写扩展名（无点）：取最后一个点之后；`.nomedia`、`a.` 视为无扩展名。
+fn ext_of(name: &str) -> Option<String> {
+    let (stem, ext) = name.rsplit_once('.')?;
+    if stem.is_empty() || ext.is_empty() {
+        return None;
+    }
+    Some(ext.to_lowercase())
+}
+
 fn escape_like(input: &str) -> String {
     input
         .replace('\\', "\\\\")
@@ -904,6 +1214,131 @@ mod tests {
             hidden: false,
             readonly: false,
         }
+    }
+
+    #[test]
+    fn remove_subtree_drops_descendants_and_search_hits() {
+        let index = Index::open_in_memory().unwrap();
+        let mut dir = entry("/root/photos", "photos");
+        dir.kind = EntryKind::Directory;
+        let mut a = entry("/root/photos/a.jpg", "a.jpg");
+        a.parent = Some("/root/photos".into());
+        let mut b = entry("/root/photos/sub/b.jpg", "b.jpg");
+        b.parent = Some("/root/photos/sub".into());
+        index.upsert_all(&[dir, a, b]).unwrap();
+        assert!(index
+            .search("b.jpg", 10)
+            .unwrap()
+            .iter()
+            .any(|e| e.name == "b.jpg"));
+        assert_eq!(index.remove_subtree("/root/photos").unwrap(), 3);
+        assert!(index.search("a.jpg", 10).unwrap().is_empty());
+        assert!(index.search("b.jpg", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn rekey_subtree_moves_ids_parents_and_search_rows() {
+        let index = Index::open_in_memory().unwrap();
+        let mut dir = entry("/root/old", "old");
+        dir.kind = EntryKind::Directory;
+        let mut a = entry("/root/old/a.jpg", "a.jpg");
+        a.parent = Some("/root/old".into());
+        let mut b = entry("/root/old/sub/b.jpg", "b.jpg");
+        b.parent = Some("/root/old/sub".into());
+        index.upsert_all(&[dir, a, b]).unwrap();
+
+        assert_eq!(index.rekey_subtree("/root/old", "/root/new").unwrap(), 3);
+        let hits = index.search("b.jpg", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "/root/new/sub/b.jpg");
+        assert_eq!(hits[0].parent.as_deref(), Some("/root/new/sub"));
+        assert!(index
+            .children_of("/root/new")
+            .unwrap()
+            .iter()
+            .any(|e| e.name == "a.jpg"));
+        assert!(index
+            .search("b.jpg", 10)
+            .unwrap()
+            .iter()
+            .all(|e| !e.id.starts_with("/root/old")));
+    }
+
+    #[test]
+    fn prefix_queries_tolerate_trailing_slash() {
+        let index = Index::open_in_memory().unwrap();
+        let mut a = entry("webdav://nas/a.txt", "a.txt");
+        a.parent = Some("webdav://nas/".into());
+        let mut b = entry("webdav://nas/sub/b.txt", "b.txt");
+        b.parent = Some("webdav://nas/sub".into());
+        index.upsert_all(&[a, b]).unwrap();
+
+        // 挂载根 id 带尾斜杠（WebDAV/SMB 的 root_id 就是这样）
+        assert_eq!(index.count_under_prefix("webdav://nas/").unwrap(), 2);
+        assert_eq!(index.count_under_prefix("webdav://nas").unwrap(), 2);
+        assert_eq!(index.remove_subtree("webdav://nas/").unwrap(), 2);
+        assert_eq!(index.count_under_prefix("webdav://nas/").unwrap(), 0);
+    }
+
+    #[test]
+    fn clear_wipes_scan_bookkeeping_so_rebuild_really_rescans() {
+        let index = Index::open_in_memory().unwrap();
+        let mut dir = entry("/root/a", "a");
+        dir.kind = EntryKind::Directory;
+        index.upsert(&dir).unwrap();
+        index.save_dir_state("/root/a", 123).unwrap();
+        index.record_listing("/root/a", 456).unwrap();
+        assert_eq!(index.dir_state_mtime("/root/a").unwrap(), Some(123));
+
+        index.clear().unwrap();
+        assert_eq!(index.dir_state_mtime("/root/a").unwrap(), None);
+        assert_eq!(index.listed_at("/root/a").unwrap(), None);
+    }
+
+    #[test]
+    fn ext_of_uses_last_dot_and_ignores_dotfiles() {
+        assert_eq!(ext_of("a.tar.gz").as_deref(), Some("gz"));
+        assert_eq!(ext_of("IMG_0001.JPG").as_deref(), Some("jpg"));
+        assert_eq!(ext_of(".nomedia"), None);
+        assert_eq!(ext_of("a."), None);
+        assert_eq!(ext_of("noext"), None);
+    }
+
+    #[test]
+    fn count_and_list_by_exts_use_indexed_column() {
+        let index = Index::open_in_memory().unwrap();
+        let mut a = entry("/root/DCIM/a.JPG", "a.JPG");
+        a.modified_ms = Some(300);
+        let mut b = entry("/root/DCIM/b.jpg", "b.jpg");
+        b.modified_ms = Some(200);
+        let mut c = entry("/root/Music/c.mp3", "c.mp3");
+        c.modified_ms = Some(100);
+        index.upsert_all(&[a, b, c]).unwrap();
+
+        let images = vec!["jpg".to_string(), "jpeg".to_string()];
+        assert_eq!(index.count_by_exts(&images, true).unwrap(), 2);
+        let listed = index.list_by_exts(&images, 10).unwrap();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].name, "a.JPG", "newest first");
+        assert_eq!(index.count_by_exts(&["mp3".to_string()], true).unwrap(), 1);
+        assert!(index.count_by_exts(&[], true).unwrap() == 0);
+
+        // 隐藏文件默认不计入分类；打开「显示隐藏文件」后才出现。
+        let mut hidden = entry("/root/DCIM/.secret.jpg", ".secret.jpg");
+        hidden.hidden = true;
+        index.upsert(&hidden).unwrap();
+        assert_eq!(index.count_by_exts(&images, false).unwrap(), 2);
+        assert_eq!(index.count_by_exts(&images, true).unwrap(), 3);
+        assert!(index
+            .list_by_exts_page(&images, 0, 10, false)
+            .unwrap()
+            .iter()
+            .all(|e| e.name != ".secret.jpg"));
+        assert!(index
+            .list_by_exts_page(&images, 0, 10, true)
+            .unwrap()
+            .iter()
+            .any(|e| e.name == ".secret.jpg"));
     }
 
     #[test]

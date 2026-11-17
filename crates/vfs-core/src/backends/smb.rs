@@ -40,6 +40,10 @@ use crate::uri::split_id;
 
 pub const SCHEME: &str = "smb";
 
+/// 单个 SMB 操作的硬上限预算：线上一轮永不完成时不能转成永久冻死
+/// （见 [`SmbBackend::cap`] 的注释）。
+const OP_CAP: std::time::Duration = std::time::Duration::from_secs(90);
+
 /// Credentials. Kerberos (and with it sspi clients) are an M2+ concern; NTLMv2
 /// username/password is the baseline that Synology/QNAP/Windows/Samba all do.
 #[derive(Debug, Clone)]
@@ -65,7 +69,10 @@ impl SmbAuth {
 
 /// A single mounted share (`smb://<host>/<share>/...`).
 pub struct SmbBackend {
-    client: Arc<Client>,
+    /// 可替换：smb-rs 的 Client 内部有 worker，连接断开后 worker 死亡，
+    /// 复用它会一直报 "failed to send message to worker"，必须整体重建。
+    client: tokio::sync::RwLock<Arc<Client>>,
+    port: Option<u16>,
     host: String,
     share: String,
     auth: SmbAuth,
@@ -75,9 +82,22 @@ pub struct SmbBackend {
     /// 存 `Arc`：读路径只在「取/换句柄」时短暂持锁，实际读通过 Arc 副本在锁外
     /// 进行——多个并发 read_range（引擎双路预取、播放 seek）互不阻塞。
     read_cache: tokio::sync::Mutex<Option<Arc<CachedRead>>>,
+    /// 顺序写句柄缓存：复制引擎按 1 MiB 调 `write_range`，如果每块都
+    /// CREATE+WRITE+FLUSH+CLOSE，Samba 上会慢且抖动明显。这里跨 chunk
+    /// 复用一个句柄，只在换文件/截断/删除/改名时 flush+close。
+    ///
+    /// `write_lock` 把同一后端的写操作串行化，因此单个缓存项是安全的；
+    /// 读路径不受影响，仍可并发。
+    write_cache: tokio::sync::Mutex<Option<Arc<CachedWrite>>>,
+    write_lock: tokio::sync::Mutex<()>,
 }
 
 struct CachedRead {
+    id: String,
+    res: Resource,
+}
+
+struct CachedWrite {
     id: String,
     res: Resource,
 }
@@ -92,26 +112,84 @@ impl SmbBackend {
         auth: SmbAuth,
     ) -> Result<Self> {
         let mut config = ClientConfig::default();
+        // smb-rs 默认读超时 10s；慢 Wi-Fi/繁忙 NAS 大文件读常超 10s 无数据，
+        // 会误报 "Operation timed out: ReceiveNextMessage, took >10s"。放宽到 60s。
+        config.connection.timeout = Some(std::time::Duration::from_secs(60));
         if let Some(port) = port {
             config.connection.port = Some(port);
         }
         let backend = Self {
-            client: Arc::new(Client::new(config)),
+            client: tokio::sync::RwLock::new(Arc::new(Client::new(config))),
+            port,
             host: host.trim_matches(['/', '\\']).to_string(),
             share: share.trim_matches(['/', '\\']).to_string(),
             auth,
             read_cache: tokio::sync::Mutex::new(None),
+            write_cache: tokio::sync::Mutex::new(None),
+            write_lock: tokio::sync::Mutex::new(()),
         };
         backend.share_connect().await?;
         Ok(backend)
     }
 
+    async fn client(&self) -> Arc<Client> {
+        self.client.read().await.clone()
+    }
+
+    /// 单个 SMB 操作的硬上限。
+    ///
+    /// smb-rs 的 credits 是发送时先扣、应答时才还的信号量；有几条应答不被
+    /// 「记账」的路径（STATUS_PENDING 的 interim 应答只在最终应答处归还、
+    /// receive 超时后迟到的应答无人认领、transform 失败的通知不走 recvo），
+    /// 而 `acquire_many` 没有任何超时——长传输累积泄漏后信号量干涸，后续
+    /// 请求会**无报错地永久挂起**。这层把「永远不返回」统一转成传输类错误，
+    /// 交给 `retry` 重建连接（新连接 = 新的 credits 预算）继续传；重试耗尽
+    /// 则显式失败，绝不无限冻死。
+    async fn cap<T, F>(fut: F) -> Result<T>
+    where
+        F: std::future::Future<Output = Result<T>>,
+    {
+        Self::cap_with(OP_CAP, fut).await
+    }
+
+    /// [`cap`] 的可测版本：超时预算由调用方给定（单测用 50ms 量级）。
+    async fn cap_with<T, F>(limit: std::time::Duration, fut: F) -> Result<T>
+    where
+        F: std::future::Future<Output = Result<T>>,
+    {
+        match tokio::time::timeout(limit, fut).await {
+            Ok(res) => res,
+            Err(_) => Err(VfsError::Network(format!(
+                "smb operation stalled ({}s cap)",
+                limit.as_secs()
+            ))),
+        }
+    }
+
     async fn share_connect(&self) -> Result<()> {
         let target = self.root_unc()?;
-        self.client
+        self.client()
+            .await
             .share_connect(&target, &self.auth.username, self.auth.password.clone())
             .await
             .map_err(map_err)
+    }
+
+    /// 连接/worker 死亡后整体重建 Client 并重新 share_connect。
+    async fn reset_client(&self) -> Result<()> {
+        let mut config = ClientConfig::default();
+        config.connection.timeout = Some(std::time::Duration::from_secs(60));
+        if let Some(port) = self.port {
+            config.connection.port = Some(port);
+        }
+        let client = Arc::new(Client::new(config));
+        let target = self.root_unc()?;
+        client
+            .share_connect(&target, &self.auth.username, self.auth.password.clone())
+            .await
+            .map_err(map_err)?;
+        *self.client.write().await = client;
+        Ok(())
     }
 
     /// Canonical id of the share root.
@@ -124,8 +202,98 @@ impl SmbBackend {
     async fn invalidate_read_cache(&self) {
         let mut cache = self.read_cache.lock().await;
         if let Some(old) = cache.take() {
+            let _ = Self::cap(async { handle_of(&old.res).close().await.map_err(map_err) }).await;
+        }
+    }
+
+    /// Only drop the read handle when the same file is being mutated; writing
+    /// a different file (SMB → SMB copy) must not break sequential prefetch.
+    async fn invalidate_read_cache_for(&self, id: &str) {
+        let mut cache = self.read_cache.lock().await;
+        let matches = cache
+            .as_ref()
+            .map(|cached| cached.id == id)
+            .unwrap_or(false);
+        if matches {
+            if let Some(old) = cache.take() {
+                let _ =
+                    Self::cap(async { handle_of(&old.res).close().await.map_err(map_err) }).await;
+            }
+        }
+    }
+
+    /// Flush + close the cached write handle. Caller must hold `write_lock`.
+    async fn close_write_cache_locked(&self) {
+        let old = self.write_cache.lock().await.take();
+        let Some(old) = old else { return };
+        if let Some(file) = old.res.as_file() {
+            let _ = Self::cap(async { file.flush().await.map_err(VfsError::io) }).await;
+        }
+        let _ = Self::cap(async { handle_of(&old.res).close().await.map_err(map_err) }).await;
+    }
+
+    /// Flush + close the cached write handle, waiting for any in-flight write.
+    async fn close_write_cache(&self) {
+        let _guard = self.write_lock.lock().await;
+        self.close_write_cache_locked().await;
+    }
+
+    /// Drop the cached handle for `id` (e.g. after a transport error).
+    /// Caller must hold `write_lock`.
+    async fn drop_write_cache_locked(&self, id: &str) {
+        let matches = self
+            .write_cache
+            .lock()
+            .await
+            .as_ref()
+            .map(|cached| cached.id == id)
+            .unwrap_or(false);
+        if matches {
+            self.close_write_cache_locked().await;
+        }
+    }
+
+    /// Get (or open) the cached write handle for `id`. Caller must hold
+    /// `write_lock`; the handle is reused across sequential chunks.
+    async fn write_handle(&self, id: &str) -> Result<Arc<CachedWrite>> {
+        let mut cache = self.write_cache.lock().await;
+        if let Some(cached) = cache.as_ref() {
+            if cached.id == id {
+                return Ok(cached.clone());
+            }
+        }
+        if let Some(old) = cache.take() {
+            if let Some(file) = old.res.as_file() {
+                let _ = file.flush().await;
+            }
             handle_of(&old.res).close().await.ok();
         }
+
+        // OpenIf + generic write: native POSIX-slice semantics, no
+        // negotiation dance needed like on WebDAV.
+        let unc = self.resolve_unc(id)?;
+        let args = FileCreateArgs {
+            disposition: CreateDisposition::OpenIf,
+            attributes: FileAttributes::new(),
+            options: CreateOptions::new().with_non_directory_file(true),
+            desired_access: write_access(),
+        };
+        let res = self
+            .client()
+            .await
+            .create_file(&unc, &args)
+            .await
+            .map_err(map_err)?;
+        if res.as_file().is_none() {
+            handle_of(&res).close().await.ok();
+            return Err(VfsError::Io(format!("not a file: {id}")));
+        }
+        let cached = Arc::new(CachedWrite {
+            id: id.to_string(),
+            res,
+        });
+        *cache = Some(cached.clone());
+        Ok(cached)
     }
 
     fn root_unc(&self) -> Result<UncPath> {
@@ -188,7 +356,8 @@ impl SmbBackend {
     /// Open an existing object; the resulting [Resource] knows its own kind.
     async fn open(&self, id: &str, access: FileAccessMask) -> Result<Resource> {
         let unc = self.resolve_unc(id)?;
-        self.client
+        self.client()
+            .await
             .create_file(&unc, &FileCreateArgs::make_open_existing(access))
             .await
             .map_err(map_err)
@@ -205,13 +374,13 @@ impl SmbBackend {
         let mut delay = std::time::Duration::from_millis(200);
         let mut attempt = 0u32;
         loop {
-            match op().await {
+            // 每次 attempt 都套 90s 硬上限：credits 干涸时 op 永不返回，
+            // 不掐掉就冻死（见 cap 文档）。掐掉后按传输错误重建连接重试。
+            match Self::cap(op()).await {
                 Err(err) if is_transport(&err) && attempt + 1 < MAX_ATTEMPTS => {
                     // A stopped connection is re-established before the retry,
                     // mirroring how the WebDAV backend re-sends its request.
-                    if matches!(err, VfsError::Network(_)) {
-                        let _ = self.share_connect().await;
-                    }
+                    let _ = Self::cap(self.reset_client()).await;
                     tokio::time::sleep(delay).await;
                     delay *= 4;
                     attempt += 1;
@@ -356,7 +525,8 @@ impl Backend for SmbBackend {
                 desired_access: FileAccessMask::new().with_generic_all(true),
             };
             let res = self
-                .client
+                .client()
+                .await
                 .create_file(&unc, &args)
                 .await
                 .map_err(map_err)?;
@@ -372,7 +542,8 @@ impl Backend for SmbBackend {
         self.retry(|| async {
             let unc = self.resolve_unc(&child_id)?;
             let res = self
-                .client
+                .client()
+                .await
                 .create_file(
                     &unc,
                     &FileCreateArgs::make_create_new(
@@ -390,6 +561,7 @@ impl Backend for SmbBackend {
 
     async fn remove(&self, id: &str, recursive: bool) -> Result<()> {
         self.invalidate_read_cache().await;
+        self.close_write_cache().await;
         // Not retried end-to-end: after a stuck-but-successful delete the
         // retry would land on NotFound and report a false failure.
         let entry = self.stat(id).await?;
@@ -398,11 +570,13 @@ impl Backend for SmbBackend {
                 Box::pin(self.remove(&child.id, true)).await?;
             }
         }
-        self.delete_leaf(&entry).await
+        // delete_leaf 不走 retry（防删一半重试造成假报错），单独套硬上限。
+        Self::cap(self.delete_leaf(&entry)).await
     }
 
     async fn rename(&self, id: &str, new_name: &str) -> Result<Entry> {
         self.invalidate_read_cache().await;
+        self.close_write_cache().await;
         validate_name(new_name)?;
         // MS-FSCC 2.4.34.2: with root_directory = 0 the FileName is the full
         // share-relative path, NOT a basename. Same-parent only (contract §2:
@@ -412,16 +586,20 @@ impl Backend for SmbBackend {
             Some(idx) => format!("{}\\{new_name}", &src_rel[..idx]),
             None => new_name.to_string(),
         };
-        let res = self.open(id, write_access()).await?;
-        handle_of(&res)
-            .set_info(FileRenameInformation {
-                replace_if_exists: true.into(),
-                root_directory: 0,
-                file_name: new_rel.as_str().into(),
-            })
-            .await
-            .map_err(map_err)?;
-        handle_of(&res).close().await.map_err(map_err)?;
+        // rename 语义要求整段原子完成，中途失败不能重跑，只套硬上限防挂死。
+        Self::cap(async {
+            let res = self.open(id, write_access()).await?;
+            handle_of(&res)
+                .set_info(FileRenameInformation {
+                    replace_if_exists: true.into(),
+                    root_directory: 0,
+                    file_name: new_rel.as_str().into(),
+                })
+                .await
+                .map_err(map_err)?;
+            handle_of(&res).close().await.map_err(map_err)
+        })
+        .await?;
         let parent = crate::uri::parent_of(id).unwrap_or_else(|| self.root_id());
         self.stat(&crate::uri::join(&parent, new_name)).await
     }
@@ -498,46 +676,48 @@ impl Backend for SmbBackend {
     }
 
     async fn write_range(&self, id: &str, offset: u64, data: &[u8]) -> Result<()> {
-        self.invalidate_read_cache().await;
-        self.retry(|| async {
-            // OpenIf + generic write: native POSIX-slice semantics, no
-            // negotiation dance needed like on WebDAV.
-            let unc = self.resolve_unc(id)?;
-            let args = FileCreateArgs {
-                disposition: CreateDisposition::OpenIf,
-                attributes: FileAttributes::new(),
-                options: CreateOptions::new().with_non_directory_file(true),
-                desired_access: write_access(),
-            };
-            let res = self
-                .client
-                .create_file(&unc, &args)
-                .await
-                .map_err(map_err)?;
-            let Some(file) = res.as_file() else {
-                handle_of(&res).close().await.ok();
-                return Err(VfsError::Io(format!("not a file: {id}")));
-            };
-            let mut written = 0usize;
-            while written < data.len() {
-                let n = file
-                    .write_at(&data[written..], offset + written as u64)
-                    .await
-                    .map_err(map_err)?;
-                if n == 0 {
-                    return Err(VfsError::Io(format!("zero-length write at {id}+{offset}")));
+        self.invalidate_read_cache_for(id).await;
+        let _guard = self.write_lock.lock().await;
+        let result = self
+            .retry(|| async {
+                let cached = self.write_handle(id).await?;
+                let Some(file) = cached.res.as_file() else {
+                    self.drop_write_cache_locked(id).await;
+                    return Err(VfsError::Io(format!("not a file: {id}")));
+                };
+                let mut written = 0usize;
+                while written < data.len() {
+                    match file
+                        .write_at(&data[written..], offset + written as u64)
+                        .await
+                    {
+                        Ok(0) => {
+                            self.drop_write_cache_locked(id).await;
+                            return Err(VfsError::Io(format!(
+                                "zero-length write at {id}+{offset}"
+                            )));
+                        }
+                        Ok(n) => written += n,
+                        Err(err) => {
+                            self.drop_write_cache_locked(id).await;
+                            return Err(map_err(err));
+                        }
+                    }
                 }
-                written += n;
-            }
-            file.flush().await.map_err(VfsError::io)?;
-            file.handle().close().await.map_err(map_err)?;
-            Ok(())
-        })
-        .await
+                Ok(())
+            })
+            .await;
+        if result.is_err() {
+            self.close_write_cache_locked().await;
+        }
+        result
     }
 
     async fn truncate(&self, id: &str, size: u64) -> Result<()> {
-        self.invalidate_read_cache().await;
+        self.invalidate_read_cache_for(id).await;
+        // Flush + close the write handle at the file boundary; this is the
+        // only per-file flush now (previously it happened every 1 MiB chunk).
+        self.close_write_cache().await;
         self.retry(|| async {
             let res = self.open(id, write_access()).await?;
             let Some(file) = res.as_file() else {
@@ -617,7 +797,8 @@ fn write_access() -> FileAccessMask {
 /// Transport-class failures are worth a retry; anything with a real NT
 /// status is deterministic and mapped immediately.
 fn is_transport(err: &VfsError) -> bool {
-    matches!(err, VfsError::Network(_))
+    // Io 在此后端基本都是传输层/worker 死亡；协议状态码走单独分支不会被重试。
+    matches!(err, VfsError::Network(_) | VfsError::Io(_))
 }
 
 fn map_err(err: smb::Error) -> VfsError {
@@ -678,11 +859,14 @@ mod tests {
     fn backend() -> SmbBackend {
         // Construction without connecting: only used for id↔UNC unit tests.
         SmbBackend {
-            client: Arc::new(Client::new(ClientConfig::default())),
+            client: tokio::sync::RwLock::new(Arc::new(Client::new(ClientConfig::default()))),
+            port: None,
             host: "NAS.local".into(),
             share: "Media".into(),
             auth: SmbAuth::guest(),
             read_cache: tokio::sync::Mutex::new(None),
+            write_cache: tokio::sync::Mutex::new(None),
+            write_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -727,11 +911,28 @@ mod tests {
             VfsError::InvalidName(_)
         ));
     }
+
+    /// cap 的核心保证：永不完成的操作必须变成「传输类错误」，而不是挂死。
+    /// is_transport 匹配 Network(_)，所以它会走 retry 的重建连接重试路径。
+    #[tokio::test]
+    async fn cap_converts_stalled_ops_into_transport_errors() {
+        let never = futures_util::future::pending::<Result<()>>();
+        let err = SmbBackend::cap_with(std::time::Duration::from_millis(50), never)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, VfsError::Network(_)), "unexpected: {err:?}");
+        assert!(is_transport(&err));
+
+        // 正常完成的操作不受影响，返回值原样透传。
+        let ok = SmbBackend::cap_with(std::time::Duration::from_secs(5), async { Ok(42u8) }).await;
+        assert_eq!(ok.unwrap(), 42);
+    }
 }
 
 /// 枚举某个 SMB 服务器上可访问的共享（连接 IPC$ 后走 srvsvc）。
 pub async fn list_shares(host: &str, port: Option<u16>, auth: SmbAuth) -> Result<Vec<String>> {
     let mut config = ClientConfig::default();
+    config.connection.timeout = Some(std::time::Duration::from_secs(60));
     if let Some(port) = port {
         config.connection.port = Some(port);
     }

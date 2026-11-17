@@ -18,9 +18,7 @@ use crate::cert::Identity;
 use crate::client;
 use crate::error::{Error, Result};
 use crate::http::{self, query_param};
-use crate::protocol::{
-    DeviceInfo, DeviceType, PrepareUpload, PrepareUploadResponse,
-};
+use crate::protocol::{DeviceInfo, DeviceType, PrepareUpload, PrepareUploadResponse};
 use crate::{DEFAULT_PORT, MULTICAST_GROUP};
 
 /// Runtime configuration. `dest_dir` is a VFS id (local absolute path or a
@@ -224,7 +222,11 @@ impl LocalSendService {
         if config.enable_discovery {
             // The TCP port may be ephemeral in tests; LocalSend's UDP discovery
             // port is fixed (53317) so all peers share the multicast group.
-            let udp_port = if config.port == 0 { DEFAULT_PORT } else { config.port };
+            let udp_port = if config.port == 0 {
+                DEFAULT_PORT
+            } else {
+                config.port
+            };
             if let Ok(discovery) =
                 Discovery::start(state.clone(), port, udp_port, shutdown_rx.clone()).await
             {
@@ -290,9 +292,14 @@ impl LocalSendService {
         port: u16,
         expected_fingerprint: Option<[u8; 32]>,
     ) -> Result<DeviceInfo> {
-        let info =
-            client::register_at(ip, port, &self.state.info, &self.state.identity, expected_fingerprint)
-                .await?;
+        let info = client::register_at(
+            ip,
+            port,
+            &self.state.info,
+            &self.state.identity,
+            expected_fingerprint,
+        )
+        .await?;
         self.state.record_peer(&info, ip).await;
         Ok(info)
     }
@@ -420,7 +427,11 @@ impl State {
     }
 
     async fn record_peer(&self, info: &DeviceInfo, ip: IpAddr) {
-        let port = if info.port == 0 { DEFAULT_PORT } else { info.port };
+        let port = if info.port == 0 {
+            DEFAULT_PORT
+        } else {
+            info.port
+        };
         self.record_peer_with_port(info, ip, port).await;
     }
 
@@ -497,7 +508,8 @@ async fn handle_connection(
             http::respond_bytes(reader.get_mut(), 200, "application/json", &body).await?;
         }
         ("POST", "/api/localsend/v2/register") => {
-            let mut body = http::read_body(&mut reader, body_len, head.is_chunked(), 1024 * 1024).await?;
+            let mut body =
+                http::read_body(&mut reader, body_len, head.is_chunked(), 1024 * 1024).await?;
             if body.starts_with(&[0xEF, 0xBB, 0xBF]) {
                 body.drain(..3);
             }
@@ -516,7 +528,8 @@ async fn handle_connection(
                 Err(err) => {
                     let detail = format!("register 400 from {peer}: {err}");
                     state.log_error(detail.clone()).await;
-                    let msg = serde_json::json!({ "message": format!("invalid register body: {err}") });
+                    let msg =
+                        serde_json::json!({ "message": format!("invalid register body: {err}") });
                     http::respond_json(reader.get_mut(), 400, &msg).await?;
                 }
             }
@@ -530,7 +543,8 @@ async fn handle_connection(
                     return Ok(());
                 }
             }
-            let mut body = http::read_body(&mut reader, body_len, head.is_chunked(), 16 * 1024 * 1024).await?;
+            let mut body =
+                http::read_body(&mut reader, body_len, head.is_chunked(), 16 * 1024 * 1024).await?;
             if body.starts_with(&[0xEF, 0xBB, 0xBF]) {
                 body.drain(..3);
             }
@@ -552,7 +566,11 @@ async fn handle_connection(
                     http::respond_empty(reader.get_mut(), 204).await?;
                 }
                 Err(_) => {
-                    state.log_error(format!("prepare-upload 400 from {peer}: invalid file metadata")).await;
+                    state
+                        .log_error(format!(
+                            "prepare-upload 400 from {peer}: invalid file metadata"
+                        ))
+                        .await;
                     http::respond_empty(reader.get_mut(), 400).await?;
                 }
             }
@@ -583,19 +601,29 @@ async fn handle_connection(
                     http::respond_empty(reader.get_mut(), 200).await?;
                 }
                 Err(UploadError::Forbidden) => {
-                    state.log_error(format!("upload 403 from {peer}: session/file/token mismatch")).await;
+                    state
+                        .log_error(format!(
+                            "upload 403 from {peer}: session/file/token mismatch"
+                        ))
+                        .await;
                     http::respond_empty(reader.get_mut(), 403).await?;
                 }
                 Err(UploadError::Checksum) => {
-                    state.log_error(format!("upload 422 from {peer}: sha256 mismatch")).await;
+                    state
+                        .log_error(format!("upload 422 from {peer}: sha256 mismatch"))
+                        .await;
                     http::respond_empty(reader.get_mut(), 422).await?;
                 }
                 Err(UploadError::BadRequest) => {
-                    state.log_error(format!("upload 400 from {peer}: malformed body")).await;
+                    state
+                        .log_error(format!("upload 400 from {peer}: malformed body"))
+                        .await;
                     http::respond_empty(reader.get_mut(), 400).await?;
                 }
                 Err(UploadError::Internal) => {
-                    state.log_error(format!("upload 500 from {peer}: vfs write failed")).await;
+                    state
+                        .log_error(format!("upload 500 from {peer}: vfs write failed"))
+                        .await;
                     http::respond_empty(reader.get_mut(), 500).await?;
                 }
             }
@@ -718,10 +746,13 @@ impl State {
             )
         };
 
-        let temp_name = temp_name.unwrap_or_else(|| {
-            format!(".localsend-{session_id}-{file_id}.part")
-        });
-        let temp = match self.vfs.stat(&vfs_core::Vfs::join(&self.dest_dir, &temp_name)).await {
+        let temp_name =
+            temp_name.unwrap_or_else(|| format!(".localsend-{session_id}-{file_id}.part"));
+        let temp = match self
+            .vfs
+            .stat(&vfs_core::Vfs::join(&self.dest_dir, &temp_name))
+            .await
+        {
             Ok(entry) => entry,
             Err(_) => match self.vfs.create_file(&self.dest_dir, &temp_name).await {
                 Ok(entry) => entry,
@@ -749,13 +780,17 @@ impl State {
                     .await
                     .map_err(|_| UploadError::BadRequest)?;
                 let size_str = line.trim().split(';').next().unwrap_or("").trim();
-                let chunk_len = usize::from_str_radix(size_str, 16)
-                    .map_err(|_| UploadError::BadRequest)?;
+                let chunk_len =
+                    usize::from_str_radix(size_str, 16).map_err(|_| UploadError::BadRequest)?;
                 if chunk_len == 0 {
                     // trailers
                     loop {
                         let mut trailer = String::new();
-                        if reader.read_line(&mut trailer).await.map_err(|_| UploadError::BadRequest)? == 0
+                        if reader
+                            .read_line(&mut trailer)
+                            .await
+                            .map_err(|_| UploadError::BadRequest)?
+                            == 0
                             || trailer.trim().is_empty()
                         {
                             break;
@@ -941,10 +976,19 @@ mod tests {
 
     #[test]
     fn sanitizes_relative_paths() {
-        assert_eq!(sanitize_file_name("../etc/passwd").as_deref(), Some("passwd"));
+        assert_eq!(
+            sanitize_file_name("../etc/passwd").as_deref(),
+            Some("passwd")
+        );
         assert_eq!(sanitize_file_name("a/b.txt").as_deref(), Some("b.txt"));
-        assert_eq!(sanitize_file_name("C:\\Users\\a.jpg").as_deref(), Some("a.jpg"));
-        assert_eq!(sanitize_file_name("ok name.jpg").as_deref(), Some("ok name.jpg"));
+        assert_eq!(
+            sanitize_file_name("C:\\Users\\a.jpg").as_deref(),
+            Some("a.jpg")
+        );
+        assert_eq!(
+            sanitize_file_name("ok name.jpg").as_deref(),
+            Some("ok name.jpg")
+        );
         assert!(sanitize_file_name("..").is_none());
         assert!(sanitize_file_name("").is_none());
     }

@@ -9,18 +9,51 @@ description = "Portable virtual filesystem abstractions for Super Files"
 # NOTE: see the russh comment in the workspace Cargo.toml for why sftp is
 # pinned to russh 0.55 (smb's sspi owns the RustCrypto RC ecosystem).
 [features]
-default = ["webdav", "smb", "sftp"]
+default = ["webdav", "smb", "sftp", "gdrive", "dropbox", "onedrive", "box", "pan115", "s3"]
 webdav = ["dep:reqwest", "dep:quick-xml", "dep:percent-encoding"]
 smb = ["dep:smb", "dep:futures-util"]
 sftp = ["dep:russh", "dep:russh-sftp"]
+gdrive = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:percent-encoding"]
+dropbox = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:percent-encoding"]
+onedrive = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:percent-encoding"]
+pan115 = ["dep:reqwest", "dep:serde", "dep:serde_json"]
+s3 = [
+    "dep:reqwest",
+    "dep:serde",
+    "dep:quick-xml",
+    "dep:percent-encoding",
+    "dep:hmac",
+    "dep:sha2",
+    "dep:hex",
+    "dep:tokio-util",
+]
+box = [
+    "dep:reqwest",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:base64",
+    "dep:sha1",
+    "dep:bytes",
+    "dep:tokio-util",
+    "dep:futures-util",
+]
 
 [dependencies]
 thiserror.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
 reqwest = { workspace = true, optional = true }
-quick-xml = { workspace = true, optional = true }
+quick-xml = { workspace = true, features = ["serialize"], optional = true }
 percent-encoding = { workspace = true, optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+base64 = { version = "0.22", optional = true }
+sha1 = { version = "0.10", optional = true }
+bytes = { version = "1", optional = true }
+tokio-util = { version = "0.7", features = ["io"], optional = true }
+hmac = { version = "0.12", optional = true }
+sha2 = { version = "0.10", optional = true }
+hex = { version = "0.4", optional = true }
 smb = { workspace = true, optional = true }
 futures-util = { workspace = true, optional = true }
 russh = { workspace = true, optional = true }

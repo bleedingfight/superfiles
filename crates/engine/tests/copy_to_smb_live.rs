@@ -251,10 +251,7 @@ async fn streaming_chunks_into_smb_file_is_byte_identical() {
         data.len() as u64,
         "chunked writes must extend the file to the exact size"
     );
-    let got = vfs
-        .read_range(&file.id, 0, data.len())
-        .await
-        .unwrap();
+    let got = vfs.read_range(&file.id, 0, data.len()).await.unwrap();
     assert_eq!(got, data);
 
     let _ = vfs.remove(&base.id, true).await;
