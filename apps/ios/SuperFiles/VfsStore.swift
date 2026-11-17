@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import AudioToolbox
 
 /// Rust 内核的 SwiftUI 门面。
 ///
@@ -31,6 +32,22 @@ final class VfsStore: ObservableObject {
     @Published private(set) var isSearching = false
     @Published private(set) var showHidden = false
     @Published private(set) var indexedCount: UInt64 = 0
+    @Published private(set) var indexedBytes: Int64 = 0
+    @Published private(set) var lastIndexedAt: Date?
+    @Published private(set) var isIndexing = false
+
+    // 近邻传输（LocalSend）
+    @Published private(set) var localSendRunning = false
+    @Published private(set) var localSendBusy = false
+    @Published private(set) var localSendInfo: LocalSendInfo?
+    @Published private(set) var localSendPeers: [LocalSendPeer] = []
+    @Published private(set) var localSendErrors: [String] = []
+    @Published private(set) var localSendStartError: String?
+    @Published private(set) var localSendSendError: String?
+
+    // 就近分享（链接 + 二维码）
+    @Published private(set) var shareInfo: ShareInfo?
+    @Published private(set) var shareBusy = false
 
     // 状态
     @Published private(set) var isLoading = false
@@ -41,6 +58,18 @@ final class VfsStore: ObservableObject {
     // 传输
     @Published private(set) var transfers: [TransferSnapshot] = []
     @Published private(set) var pendingTransfers: [PendingTransfer] = []
+    @Published private(set) var transferRates: [String: Int64] = [:]
+    /// 传输开始时的友好名称（文件名/文件夹名），结束后原始快照不再带 current。
+    @Published private(set) var transferLabels: [String: String] = [:]
+    /// 前台传输：复制/移动刚开始只在 App 内显示进度浮层（带「终止 / 后台传输」），
+    /// 用户点「后台传输」（或 App 退到后台）后才进传输中心。
+    @Published private(set) var foregroundTransferIds: Set<String> = []
+    @Published private(set) var foregroundMoveIds: Set<String> = []
+
+    /// 浮层展示用：当前仍在前台集合里的任务快照。
+    var foregroundTransfers: [TransferSnapshot] {
+        transfers.filter { foregroundTransferIds.contains($0.id) }
+    }
 
     let appRoot: String
     let core: SuperFiles
@@ -48,22 +77,44 @@ final class VfsStore: ObservableObject {
     private var history: [String] = []
     private var loadSeq = 0
     private var transferTask: Task<Void, Never>?
+    private var localSendHandle: LocalSendHandle?
+    private var localSendPollTask: Task<Void, Never>?
     private var savedMounts: [SavedMount] = []
     private let mountsKey = "saved_network_mounts_v1"
+    private var indexURL: URL?
+    private static let lastIndexKey = "sf.index.lastIndexedAt"
+    private static let localSendDestKey = "sf.localsend.destId"
+    private static let localSendDestNameKey = "sf.localsend.destName"
+
+    private struct RateSample {
+        var time: TimeInterval = 0
+        var bytes: [String: UInt64] = [:]
+        var rates: [String: Int64] = [:]
+    }
+    private var rateSample = RateSample()
+    private var activeTransferIds: Set<String> = []
 
     init() {
         let fileManager = FileManager.default
+        // 清理上次播放/复制失败留下的临时文件（20GB 电影复制失败会留下几个 GB）。
+        Self.cleanupStaleTemporaryFiles()
         let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let meta = documents.appendingPathComponent(".superfiles", isDirectory: true)
         try? fileManager.createDirectory(at: meta, withIntermediateDirectories: true)
+        let indexURL = meta.appendingPathComponent("index.sqlite")
+        self.indexURL = indexURL
 
         do {
             core = try SuperFiles.open(
                 localRoot: documents.path,
-                indexPath: meta.appendingPathComponent("index.sqlite").path
+                indexPath: indexURL.path
             )
         } catch {
             fatalError("Super Files core failed to start: \(error)")
+        }
+
+        if let ms = UserDefaults.standard.object(forKey: Self.lastIndexKey) as? Double {
+            lastIndexedAt = Date(timeIntervalSince1970: ms / 1000)
         }
 
         appRoot = core.rootId()
@@ -106,26 +157,51 @@ final class VfsStore: ObservableObject {
         case .favorites: return "收藏"
         case .transfers: return "传输中心"
         case .browser:
+            if currentId == appRoot { return "应用存储" }
+            if let mount = mounts.first(where: { currentId == $0.rootId }) {
+                return mount.label
+            }
             let name = (path as NSString).lastPathComponent
             return name.isEmpty ? "文件" : name
         }
     }
 
     var subtitle: String {
-        if listMode == .browser {
-            let indexed = indexedCount > 0 ? " · 已索引 \(indexedCount) 项" : ""
-            return path + indexed
-        }
         switch listMode {
         case .recent: return "\(recent.count) 项"
         case .favorites: return "\(favorites.count) 项"
         case .transfers: return "\(activeTransferCount) 个进行中"
-        case .browser: return path
+        case .browser: return friendlyPath(path)
         }
     }
 
+    /// 状态栏不展示沙盒绝对路径或网络存储地址；只显示「位置 / 相对路径」。
+    private func friendlyPath(_ value: String) -> String {
+        if value.contains("://") {
+            guard let mount = mounts
+                .filter({ value == $0.rootId || value.hasPrefix($0.rootId + "/") })
+                .max(by: { $0.rootId.count < $1.rootId.count })
+            else { return "" }
+            let relative = value
+                .dropFirst(mount.rootId.count)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            return relative.isEmpty ? mount.label : "\(mount.label) / \(relative)"
+        }
+        guard value.hasPrefix("/") else { return value }
+        let root = URL(fileURLWithPath: appRoot).standardizedFileURL.path
+        let current = URL(fileURLWithPath: value).standardizedFileURL.path
+        if current == root { return "应用存储" }
+        if current.hasPrefix(root + "/") {
+            let relative = String(current.dropFirst(root.count + 1))
+            return "应用存储 / \(relative)"
+        }
+        return value
+    }
+
     var activeTransferCount: Int {
-        transfers.filter { $0.state == .queued || $0.state == .running }.count
+        transfers.filter {
+            $0.state == .queued || $0.state == .running || $0.state == .paused
+        }.count
     }
 
     var version: String { core.version() }
@@ -134,7 +210,9 @@ final class VfsStore: ObservableObject {
 
     // MARK: - 位置 / 目录导航
 
+    /// 选中一个位置并加载。重复点击同一位置也会重新加载（用于手动刷新网络挂载）。
     func activate(_ selection: SidebarSelection) {
+        sidebar = selection
         isSearching = false
         query = ""
         selectedEntry = nil
@@ -226,6 +304,7 @@ final class VfsStore: ObservableObject {
         isLoading = true
         errorMessage = nil
         offlineCacheMs = nil
+        path = core.displayPath(id: id)
         let core = self.core
         let includeHidden = showHidden
 
@@ -347,8 +426,29 @@ final class VfsStore: ObservableObject {
     func refreshRecent() {
         let core = self.core
         Task {
-            let outcome = await runOffMain { try core.recentFiles(limit: 40) }
-            if case .success(let list) = outcome { self.recent = list }
+            // 列表按 opened_ms 倒序；同名文件只保留最近打开的那一条。
+            let outcome = await runOffMain { try core.recentFiles(limit: 80) }
+            if case .success(let list) = outcome {
+                var seen = Set<String>()
+                let unique = list.filter {
+                    seen.insert($0.entry.name.lowercased()).inserted
+                }
+                self.recent = Array(unique.prefix(40))
+            }
+        }
+    }
+
+    /// 从「最近打开」移除一条记录；原文件保持不变。
+    func removeRecent(_ entry: Entry) {
+        let core = self.core
+        Task {
+            let outcome = await runOffMain { try core.removeRecent(id: entry.id) }
+            switch outcome {
+            case .success:
+                self.refreshRecent()
+            case .failure(let failure):
+                self.errorMessage = Self.describe(failure)
+            }
         }
     }
 
@@ -385,7 +485,7 @@ final class VfsStore: ObservableObject {
             switch outcome {
             case .success:
                 self.refreshFavorites()
-                self.notice = adding ? "已收藏「\(entry.name)」" : "已取消收藏「\(entry.name)」"
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             case .failure(let failure):
                 self.errorMessage = Self.describe(failure)
             }
@@ -511,14 +611,25 @@ final class VfsStore: ObservableObject {
     // MARK: - 索引
 
     func indexCurrent() {
+        index(id: currentId)
+    }
+
+    /// 重建整个根（应用存储）的索引；「存储管理」里的手动入口。
+    func indexRoot() {
+        index(id: rootId)
+    }
+
+    private func index(id: String) {
+        guard !isIndexing else { return }
         let core = self.core
-        let id = currentId
+        isIndexing = true
         notice = "正在建立索引…"
         Task {
             let outcome = await runOffMain { try core.indexDir(id: id) }
+            self.isIndexing = false
             switch outcome {
             case .success:
-                self.indexedCount = core.indexCount()
+                self.markIndexed()
                 self.notice = "索引完成（共 \(self.indexedCount) 项）"
             case .failure(let failure):
                 self.errorMessage = Self.describe(failure)
@@ -531,7 +642,403 @@ final class VfsStore: ObservableObject {
         Task {
             let result = await runOffMain { core.indexCount() }
             self.indexedCount = result.getOrElse(0)
+            self.indexedBytes = self.currentIndexBytes()
         }
+    }
+
+    func clearIndex() {
+        let core = self.core
+        Task {
+            let result: Result<Void, Error> = await runOffMain { try core.clearIndex() }
+            switch result {
+            case .success:
+                self.indexedCount = 0
+                self.indexedBytes = 0
+                self.lastIndexedAt = nil
+                UserDefaults.standard.removeObject(forKey: Self.lastIndexKey)
+                self.notice = "索引已清理"
+            case .failure(let failure):
+                self.errorMessage = Self.describe(failure)
+            }
+        }
+    }
+
+    private func markIndexed() {
+        indexedCount = core.indexCount()
+        indexedBytes = currentIndexBytes()
+        lastIndexedAt = Date()
+        if let lastIndexedAt {
+            UserDefaults.standard.set(
+                lastIndexedAt.timeIntervalSince1970 * 1000,
+                forKey: Self.lastIndexKey
+            )
+        }
+    }
+
+    private func currentIndexBytes() -> Int64 {
+        guard let indexURL else { return 0 }
+        let attrs = try? FileManager.default.attributesOfItem(atPath: indexURL.path)
+        return (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+    }
+
+    /// 生成可分享的诊断文本（版本 / 设备 / 索引 / 挂载 / 传输）。
+    func createDiagnosticsFile() -> URL? {
+        let bundle = Bundle.main
+        let appVersion = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "-"
+        let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "-"
+        let device = UIDevice.current
+
+        var lines: [String] = []
+        lines.append("Super Files 诊断")
+        lines.append("生成时间: \(Fmt.date.string(from: Date()))")
+        lines.append("App: \(appVersion) (\(build)) · core v\(version) · \(bundle.bundleIdentifier ?? "-")")
+        lines.append("设备: \(device.model) · \(device.systemName) \(device.systemVersion)")
+        let bytes = Fmt.bytes.string(fromByteCount: indexedBytes)
+        lines.append("索引: \(indexedCount) 项 · \(bytes)")
+        lines.append("上次扫描: \(lastIndexedAt.map { Fmt.date.string(from: $0) } ?? "无")")
+        let mountText = mounts.isEmpty
+            ? "无"
+            : mounts.map { "\($0.label)(\($0.scheme))" }.joined(separator: ", ")
+        lines.append("网络存储: \(mountText)")
+        let transferText = transfers.isEmpty
+            ? "无"
+            : transfers.map { "\($0.id)=\($0.state) \($0.bytesDone)/\($0.bytesTotal)" }
+                .joined(separator: ", ")
+        lines.append("传输: \(transferText)")
+        let pendingText = pendingTransfers.isEmpty
+            ? "无"
+            : pendingTransfers.map(\.id).joined(separator: ", ")
+        lines.append("可恢复传输: \(pendingText)")
+        lines.append("LocalSend: \(localSendRunning ? "已开启" : "未开启") · \(localSendPeers.count) 台附近设备")
+        if let info = localSendInfo {
+            lines.append("LocalSend 本机: \(info.alias) · 端口 \(info.port) · 指纹 \(info.fingerprint)")
+        }
+        if let start = localSendStartError {
+            lines.append("LocalSend 启动错误: \(start)")
+        }
+        if let send = localSendSendError {
+            lines.append("LocalSend 发送错误: \(send)")
+        }
+        if !localSendErrors.isEmpty {
+            lines.append("LocalSend 诊断: \(localSendErrors.suffix(5).joined(separator: " | "))")
+        }
+        lines.append("就近分享: \(shareInfo?.url ?? "未开启")")
+
+        let directory = FileManager.default
+            .urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("diagnostics", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let name = "diagnostics-\(Int(Date().timeIntervalSince1970 * 1000)).txt"
+            let url = directory.appendingPathComponent(name)
+            try lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            errorMessage = "导出诊断失败：\(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    // MARK: - 近邻传输（LocalSend）
+
+    /// 近邻传输接收位置：用户设置优先，默认应用根目录。
+    var localSendDestDir: String {
+        if let saved = UserDefaults.standard.string(forKey: Self.localSendDestKey),
+           !saved.isEmpty {
+            return saved
+        }
+        return appRoot
+    }
+
+    var localSendDestName: String {
+        if let saved = UserDefaults.standard.string(forKey: Self.localSendDestNameKey),
+           !saved.isEmpty {
+            return saved
+        }
+        return "应用存储"
+    }
+
+    /// 用户选择接收位置（本地目录 / 网络挂载）；运行中会自动重启监听以生效。
+    func setLocalSendDestination(_ id: String, name: String) {
+        guard !id.isEmpty else { return }
+        UserDefaults.standard.set(id, forKey: Self.localSendDestKey)
+        UserDefaults.standard.set(name, forKey: Self.localSendDestNameKey)
+        if localSendRunning {
+            stopLocalSend()
+            startLocalSend()
+        }
+    }
+
+    private var localSendStoreDir: String {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return documents
+            .appendingPathComponent(".superfiles/localsend", isDirectory: true)
+            .path
+    }
+
+    func ensureLocalSendStarted() {
+        guard !localSendRunning, !localSendBusy else { return }
+        startLocalSend()
+    }
+
+    func startLocalSend() {
+        guard !localSendRunning, !localSendBusy else { return }
+        localSendBusy = true
+        localSendStartError = nil
+        localSendSendError = nil
+        let core = self.core
+        let alias = UIDevice.current.name.isEmpty ? "Super Files" : UIDevice.current.name
+        let deviceModel = UIDevice.current.model
+        let dest = localSendDestDir
+        let storeDir = localSendStoreDir
+
+        Task {
+            let outcome: Result<(LocalSendHandle, LocalSendInfo), Error> = await runOffMain {
+                // 本地目录才需要创建；网络挂载 id（webdav://…）不能当本地路径创建
+                if dest.hasPrefix("/") {
+                    try FileManager.default.createDirectory(
+                        atPath: dest,
+                        withIntermediateDirectories: true
+                    )
+                }
+                try FileManager.default.createDirectory(
+                    atPath: storeDir,
+                    withIntermediateDirectories: true
+                )
+                let options = LocalSendOptions(
+                    alias: alias,
+                    deviceModel: deviceModel,
+                    port: 53317,
+                    storeDir: storeDir,
+                    destDir: dest,
+                    pin: nil,
+                    enableDiscovery: true,
+                    idleTimeoutSecs: 300
+                )
+                let handle = try core.startLocalSend(options: options)
+                return (handle, handle.info())
+            }
+            self.localSendBusy = false
+            switch outcome {
+            case .success(let (handle, info)):
+                self.localSendHandle = handle
+                self.localSendInfo = info
+                self.localSendRunning = true
+                self.startLocalSendPolling()
+                self.refreshLocalSendPeers()
+            case .failure(let failure):
+                let detail = Self.describe(failure)
+                let message = Self.localSendFriendlyError(detail)
+                self.localSendStartError = message
+                self.recordLocalSendError("start: \(detail)")
+            }
+        }
+    }
+
+    func stopLocalSend() {
+        localSendPollTask?.cancel()
+        localSendPollTask = nil
+        let handle = localSendHandle
+        localSendHandle = nil
+        resetLocalSendState()
+        if let handle {
+            Task.detached { handle.stop() }
+        }
+    }
+
+    private func resetLocalSendState() {
+        localSendRunning = false
+        localSendBusy = false
+        localSendInfo = nil
+        localSendPeers = []
+        localSendErrors = []
+        localSendStartError = nil
+        localSendSendError = nil
+    }
+
+    /// 广播一次并拉取设备列表。没有服务时自动开启。
+    func refreshLocalSendPeers() {
+        guard let handle = localSendHandle else {
+            ensureLocalSendStarted()
+            return
+        }
+        Task {
+            _ = await runOffMain { handle.announce() }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            let outcome: Result<([LocalSendPeer], [String]), Error> = await runOffMain {
+                (handle.peers(), handle.errors())
+            }
+            if case .success(let (peers, errors)) = outcome {
+                self.localSendPeers = self.pruneStalePeers(peers)
+                self.localSendErrors = errors
+            }
+        }
+    }
+
+    /// 手动 IP 兜底：组播被 AP 隔离时直接连对方。成功返回 nil，失败返回错误文案。
+    func registerLocalSendPeer(ip: String, port: UInt16, fingerprint: String?) async -> String? {
+        guard let handle = localSendHandle else {
+            return "请先开启近邻传输"
+        }
+        let trimmedIP = ip.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedIP.isEmpty else { return "请填写对方 IP" }
+        let expected = fingerprint?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result: Result<LocalSendPeer, Error> = await runOffMain {
+            try handle.registerAt(
+                ip: trimmedIP,
+                port: port > 0 ? port : 53317,
+                fingerprint: (expected?.isEmpty ?? true) ? nil : expected
+            )
+        }
+        switch result {
+        case .success(let peer):
+            localSendPeers.removeAll { $0.ip == peer.ip && $0.port == peer.port }
+            localSendPeers.append(peer)
+            return nil
+        case .failure(let failure):
+            let detail = Self.describe(failure)
+            recordLocalSendError("register: \(detail)")
+            return Self.localSendFriendlyError(detail)
+        }
+    }
+
+    /// LocalSend 只传文件；文件夹请在调用方先压缩。
+    func sendViaLocalSend(
+        peer: LocalSendPeer,
+        entries: [Entry],
+        onSuccess: (() -> Void)? = nil
+    ) {
+        guard let handle = localSendHandle else {
+            localSendSendError = "请先开启近邻传输"
+            return
+        }
+        let files = entries.filter { $0.kind == .file }
+        guard !files.isEmpty else {
+            localSendSendError = "仅支持发送文件，文件夹请先压缩"
+            return
+        }
+        localSendSendError = nil
+        localSendBusy = true
+        Task {
+            let result: Result<Void, Error> = await runOffMain {
+                try handle.send(peer: peer, ids: files.map(\.id))
+            }
+            self.localSendBusy = false
+            switch result {
+            case .success:
+                self.playTransferDoneSound()
+                onSuccess?()
+            case .failure(let failure):
+                let detail = Self.describe(failure)
+                let message = Self.localSendFriendlyError(detail)
+                self.localSendSendError = message
+                self.recordLocalSendError("send: \(detail)")
+                if Self.isPeerUnreachable(detail) {
+                    self.localSendPeers.removeAll {
+                        $0.ip == peer.ip && $0.port == peer.port
+                    }
+                }
+            }
+        }
+    }
+
+    private func recordLocalSendError(_ text: String) {
+        localSendErrors.append(text)
+        if localSendErrors.count > 20 {
+            localSendErrors.removeFirst(localSendErrors.count - 20)
+        }
+    }
+
+    /// 只保留最近 20 秒内有广播的设备，避免点了已关闭 App 的过期条目。
+    private func pruneStalePeers(_ peers: [LocalSendPeer]) -> [LocalSendPeer] {
+        let now = UInt64(Date().timeIntervalSince1970 * 1000)
+        return peers.filter { peer in
+            guard peer.lastSeenMs > 0, now > peer.lastSeenMs else { return true }
+            return now - peer.lastSeenMs < 20_000
+        }
+    }
+
+    private static func isPeerUnreachable(_ detail: String) -> Bool {
+        let text = detail.lowercased()
+        return text.contains("connection refused")
+            || text.contains("no route to host")
+            || text.contains("network is unreachable")
+    }
+
+    /// 把底层 io/tls 文案翻成可操作提示，原始详情保留在「协议诊断」里。
+    static func localSendFriendlyError(_ detail: String) -> String {
+        let text = detail.lowercased()
+        if text.contains("connection refused") {
+            return "对方没有在接收文件。请让对方打开「近邻传输」并保持前台，然后刷新设备再试。"
+        }
+        if text.contains("no route to host") || text.contains("network is unreachable") {
+            return "网络不可达。请确认两台设备连在同一个 Wi-Fi，并检查 iPad 的「本地网络」权限。"
+        }
+        if text.contains("operation not permitted") || text.contains("permission denied") {
+            return "本地网络权限被拒绝。请到 设置 → 隐私与安全性 → 本地网络，打开 Super Files。"
+        }
+        if text.contains("address already in use") {
+            return "端口 53317 被占用。请关闭其他 LocalSend 应用后重试。"
+        }
+        if text.contains("certificate fingerprint mismatch") {
+            return "对方证书指纹已变化（可能重装过 App）。请刷新设备列表后重试。"
+        }
+        if text.contains("timed out") || text.contains("timeout") {
+            return "连接超时。请确认对方仍开着近邻传输且在同一 Wi-Fi。"
+        }
+        return detail
+    }
+
+    private func startLocalSendPolling() {
+        localSendPollTask?.cancel()
+        localSendPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, let handle = self.localSendHandle else { return }
+                let outcome: Result<(Bool, [LocalSendPeer], [String]), Error> = await runOffMain {
+                    (handle.isRunning(), handle.peers(), handle.errors())
+                }
+                if case .success(let (running, peers, errors)) = outcome {
+                    self.localSendPeers = self.pruneStalePeers(peers)
+                    self.localSendErrors = errors
+                    if !running {
+                        self.stopLocalSend()
+                        return
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            }
+        }
+    }
+
+    // MARK: - 就近分享（链接 + 二维码）
+
+    func startShare(entries: [Entry]) {
+        let files = entries.filter { $0.kind == .file }
+        guard !files.isEmpty else {
+            errorMessage = "仅支持分享文件，文件夹请先压缩"
+            return
+        }
+        shareBusy = true
+        let core = self.core
+        Task {
+            let result: Result<ShareInfo, Error> = await runOffMain {
+                try core.startShare(ids: files.map(\.id))
+            }
+            self.shareBusy = false
+            switch result {
+            case .success(let info):
+                self.shareInfo = info
+            case .failure(let failure):
+                self.errorMessage = Self.describe(failure)
+            }
+        }
+    }
+
+    func stopShare() {
+        guard shareInfo != nil else { return }
+        _ = core.stopShare()
+        shareInfo = nil
+        shareBusy = false
     }
 
     // MARK: - 传输
@@ -547,8 +1054,14 @@ final class VfsStore: ObservableObject {
                 return try core.startCopy(sources: sources, destDir: destDir, conflict: .rename)
             }
             switch outcome {
-            case .success:
-                self.notice = move ? "已开始移动 \(sources.count) 项" : "已开始复制 \(sources.count) 项"
+            case .success(let id):
+                self.transferLabels[id] = Self.transferLabel(
+                    sources: sources,
+                    count: UInt64(sources.count)
+                )
+                activeTransferIds.insert(id)
+                foregroundTransferIds.insert(id)
+                if move { foregroundMoveIds.insert(id) }
                 self.pollTransfers()
             case .failure(let failure):
                 self.errorMessage = Self.describe(failure)
@@ -556,9 +1069,38 @@ final class VfsStore: ObservableObject {
         }
     }
 
+    private static func transferLabel(sources: [String], count: UInt64) -> String {
+        let first = sources.first.map {
+            ($0 as NSString).lastPathComponent
+        } ?? "传输"
+        return count > 1 ? "\(first) 等 \(count) 项" : first
+    }
+
     func cancelTransfer(_ id: String) {
         core.cancelTransfer(id: id)
         pollTransfers()
+    }
+
+    /// 前台进度浮层 →「后台传输」：只是把任务交给传输中心展示，引擎任务本身不中断。
+    func sendForegroundTransfersToBackground() {
+        foregroundTransferIds.removeAll()
+        foregroundMoveIds.removeAll()
+    }
+
+    /// 前台进度浮层 →「终止」：取消这批任务并收起浮层。
+    func cancelForegroundTransfers() {
+        let ids = foregroundTransferIds
+        foregroundTransferIds.removeAll()
+        foregroundMoveIds.removeAll()
+        guard !ids.isEmpty else { return }
+        for id in ids { core.cancelTransfer(id: id) }
+        notice = "已终止传输"
+        pollTransfers()
+    }
+
+    /// App 退到后台时调用：浮层已不可见，自动等价于按下「后台传输」。
+    func promoteForegroundTransfers() {
+        sendForegroundTransfersToBackground()
     }
 
     func resumeTransfer(_ pending: PendingTransfer) {
@@ -567,7 +1109,12 @@ final class VfsStore: ObservableObject {
             let outcome = await runOffMain { try core.resumeTransfer(id: pending.id) }
             switch outcome {
             case .success:
-                self.notice = "继续传输…"
+                self.transferLabels[pending.id] = Self.transferLabel(
+                    sources: pending.sources,
+                    count: pending.filesTotal
+                )
+                self.activeTransferIds.insert(pending.id)
+                // 直接继续，不再弹「继续传输…」提示打断操作。
                 self.pollTransfers()
             case .failure(let failure):
                 self.errorMessage = Self.describe(failure)
@@ -580,8 +1127,11 @@ final class VfsStore: ObservableObject {
         Task {
             let snapshotResult = await runOffMain { core.transfers() }
             let pendingResult = await runOffMain { try core.pendingTransfers() }
-            self.transfers = snapshotResult.getOrElse([])
+            let snapshots = snapshotResult.getOrElse([])
+            self.transfers = snapshots
             self.pendingTransfers = pendingResult.getOrElse([])
+            self.updateTransferRates(snapshots)
+            self.pruneFinishedForeground(snapshots)
         }
     }
 
@@ -596,6 +1146,9 @@ final class VfsStore: ObservableObject {
                 let snapshots = snapshotResult.getOrElse([])
                 self.transfers = snapshots
                 self.pendingTransfers = pendingResult.getOrElse([])
+                self.updateTransferRates(snapshots)
+                self.pruneFinishedForeground(snapshots)
+                self.notifyTransferCompletion(snapshots)
                 let active = snapshots.contains { $0.state == .queued || $0.state == .running }
                 if !active {
                     if self.listMode == .browser { self.load(self.currentId) }
@@ -607,7 +1160,92 @@ final class VfsStore: ObservableObject {
         }
     }
 
+    /// 一批传输全部完成时「叮」一声（取消/失败不响）。
+    private func notifyTransferCompletion(_ snapshots: [TransferSnapshot]) {
+        let activeNow = Set(
+            snapshots
+                .filter { $0.state == .queued || $0.state == .running }
+                .map(\.id)
+        )
+        let completed = snapshots.contains { snapshot in
+            activeTransferIds.contains(snapshot.id)
+                && !activeNow.contains(snapshot.id)
+                && snapshot.state == .completed
+        }
+        activeTransferIds = activeNow
+        if completed {
+            playTransferDoneSound()
+        }
+    }
+
+    private func playTransferDoneSound() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        AudioServicesPlaySystemSound(1103) // Tink
+    }
+
+    /// 轮询差值 + EMA 平滑，给浮层/传输中心显示实时速度。
+    private func updateTransferRates(_ snapshots: [TransferSnapshot]) {
+        let now = Date().timeIntervalSince1970
+        let previous = rateSample
+        let elapsed = now - previous.time
+        var bytes: [String: UInt64] = [:]
+        var rates: [String: Int64] = [:]
+        for snapshot in snapshots where snapshot.state == .running {
+            bytes[snapshot.id] = snapshot.bytesDone
+            if previous.time > 0, elapsed > 0.1, let last = previous.bytes[snapshot.id] {
+                let delta = snapshot.bytesDone > last ? snapshot.bytesDone - last : 0
+                let instant = Int64(Double(delta) / elapsed)
+                let ema = previous.rates[snapshot.id]
+                    .map { Int64(Double($0) * 0.6 + Double(instant) * 0.4) }
+                    ?? instant
+                rates[snapshot.id] = ema
+            } else {
+                rates[snapshot.id] = previous.rates[snapshot.id] ?? 0
+            }
+        }
+        rateSample = RateSample(time: now, bytes: bytes, rates: rates)
+        transferRates = rates
+    }
+
+    /// 前台浮层里的任务结束（完成/失败/取消）→ 自动收起浮层。
+    private func pruneFinishedForeground(_ snapshots: [TransferSnapshot]) {
+        guard !foregroundTransferIds.isEmpty else { return }
+        let ended = snapshots
+            .filter {
+                foregroundTransferIds.contains($0.id)
+                    && $0.state != .queued
+                    && $0.state != .running
+                    // 防御：浮层没有暂停入口，但若未来接入，别把暂停误判成结束
+                    && $0.state != .paused
+            }
+            .map(\.id)
+        guard !ended.isEmpty else { return }
+        foregroundTransferIds.subtract(ended)
+        foregroundMoveIds.subtract(ended)
+    }
+
     // MARK: - 网络存储
+
+    /// 临时挂载并 PROPFIND 根目录，验证地址与凭据；不写入钥匙串/已保存列表。
+    func testWebdavConnection(host: String, username: String, password: String) async throws {
+        let core = self.core
+        let result: Result<Void, Error> = await runOffMain {
+            let existing = Set(core.mounts().map(\.rootId))
+            let root = try core.mountWebdav(
+                label: "连接测试",
+                baseUrl: host,
+                username: username,
+                password: password
+            )
+            defer {
+                if !existing.contains(root) {
+                    _ = core.unmount(rootId: root)
+                }
+            }
+            _ = try core.list(id: root)
+        }
+        try result.get()
+    }
 
     func addMount(_ draft: MountDraft) async throws -> MountedLocation {
         let core = self.core
@@ -646,6 +1284,80 @@ final class VfsStore: ObservableObject {
         if sidebar == .mount(location.rootId) || rootId == location.rootId {
             sidebar = .appStorage
             activate(.appStorage)
+        }
+    }
+
+    /// 侧栏「编辑连接」用：按当前挂载找到持久化配置（密码在 Keychain，不随配置返回）。
+    func savedMount(for location: MountedLocation) -> SavedMount? {
+        savedMounts.first { $0.rootId == location.rootId }
+    }
+
+    /// 编辑网络存储：卸载旧挂载 → 用新配置重挂载 → 更新 Keychain / 已保存列表。
+    /// 新配置连接失败时尽量恢复原连接，避免编辑失败导致位置凭空消失。
+    func updateMount(_ old: SavedMount, draft: MountDraft) async throws -> MountedLocation {
+        let core = self.core
+        let fallbackPassword = KeychainStore.load(account: old.id.uuidString) ?? ""
+        let oldRoot = old.rootId
+        if let oldRoot { _ = core.unmount(rootId: oldRoot) }
+
+        var updated = old
+        updated.label = draft.displayLabel
+        updated.kind = draft.kind
+        updated.host = draft.host
+        updated.share = draft.share
+        updated.port = draft.port
+        updated.username = draft.username
+        updated.rootId = nil
+        let candidate = updated
+
+        let result = await runOffMain {
+            try Self.performMount(core: core, mount: candidate, password: draft.password)
+        }
+        switch result {
+        case .success(let newRoot):
+            updated.rootId = newRoot
+            KeychainStore.save(draft.password, account: old.id.uuidString)
+            if let index = savedMounts.firstIndex(where: { $0.id == old.id }) {
+                savedMounts[index] = updated
+            } else {
+                savedMounts.append(updated)
+            }
+            persistSavedMounts()
+
+            let location = MountedLocation(label: updated.label, scheme: updated.kind, rootId: newRoot)
+            if let index = mounts.firstIndex(where: { $0.rootId == oldRoot }) {
+                mounts[index] = location
+            } else {
+                mounts.append(location)
+            }
+            if rootId == oldRoot || sidebar == .mount(oldRoot ?? "") {
+                activate(.mount(newRoot))
+            }
+            return location
+
+        case .failure(let error):
+            // 编辑失败：恢复旧连接，保留原来的位置与索引引用。
+            if let oldRoot {
+                let restore = await runOffMain {
+                    try Self.performMount(core: core, mount: old, password: fallbackPassword)
+                }
+                if case .success(let restoredRoot) = restore {
+                    if let index = savedMounts.firstIndex(where: { $0.id == old.id }) {
+                        savedMounts[index].rootId = restoredRoot
+                        persistSavedMounts()
+                    }
+                    let restored = MountedLocation(label: old.label, scheme: old.kind, rootId: restoredRoot)
+                    if let index = mounts.firstIndex(where: { $0.rootId == oldRoot }) {
+                        mounts[index] = restored
+                    } else {
+                        mounts.append(restored)
+                    }
+                    if rootId == oldRoot || sidebar == .mount(oldRoot) {
+                        activate(.mount(restoredRoot))
+                    }
+                }
+            }
+            throw error
         }
     }
 
@@ -712,6 +1424,63 @@ final class VfsStore: ObservableObject {
 
     // MARK: - 下载 / 预览 / 分享
 
+    /// 启动时清理我们自己的临时残留：播放缓存、URLSession 下载临时文件和
+    /// 交给 QuickLook/外部 App 的 UUID 副本。超过 1 小时未再写入的才删，
+    /// 避免误删正在后台续传/仍在使用的文件。
+    private static func cleanupStaleTemporaryFiles() {
+        let fileManager = FileManager.default
+        let tmp = fileManager.temporaryDirectory
+        let cutoff = Date().addingTimeInterval(-60 * 60)
+        let keys: [URLResourceKey] = [.isRegularFileKey, .contentModificationDateKey, .creationDateKey]
+        guard let items = try? fileManager.contentsOfDirectory(
+            at: tmp,
+            includingPropertiesForKeys: keys,
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        let uuidPrefix = try! NSRegularExpression(
+            pattern: #"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}-"#
+        )
+        for url in items {
+            let name = url.lastPathComponent
+            // 播放缓存是本次会话独有的，启动时一律可删。
+            if name.hasPrefix("superfiles-play-") {
+                try? fileManager.removeItem(at: url)
+                continue
+            }
+            let isOurs = name.hasPrefix("CFNetworkDownload_")
+                || uuidPrefix.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) != nil
+            guard isOurs else { continue }
+            guard let values = try? url.resourceValues(forKeys: Set(keys)),
+                  values.isRegularFile == true else { continue }
+            let modified = values.contentModificationDate ?? values.creationDate ?? .distantPast
+            if modified < cutoff {
+                try? fileManager.removeItem(at: url)
+            }
+        }
+    }
+
+    /// 临时目录可用空间（优先用 iOS 的 important-usage 口径）。
+    private func availableTemporarySpace() -> Int64? {
+        let tmp = FileManager.default.temporaryDirectory
+        if let values = try? tmp.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+           let capacity = values.volumeAvailableCapacityForImportantUsage {
+            return capacity
+        }
+        guard let attrs = try? FileManager.default.attributesOfFileSystem(forPath: tmp.path),
+              let free = attrs[.systemFreeSize] as? NSNumber else { return nil }
+        return free.int64Value
+    }
+
+    /// 完整复制远端文件需要「文件大小 + 256 MiB 余量」；不足时给出明确原因，
+    /// 而不是让 URLSession 报成「无法连接服务器」。
+    private func spaceShortage(for entry: Entry) -> String? {
+        guard let available = availableTemporarySpace() else { return nil }
+        let needed = Int64(clamping: entry.size) + 256 * 1024 * 1024
+        guard available < needed else { return nil }
+        return "存储空间不足：复制「\(entry.name)」需要约 \(Fmt.bytes.string(fromByteCount: needed))，当前可用 \(Fmt.bytes.string(fromByteCount: available))"
+    }
+
     /// 本地条目 id 就是绝对路径；远端条目需要经回环 stream 服务。
     func localFileURL(for entry: Entry) -> URL? {
         guard entry.kind == .file, entry.id.hasPrefix("/") else { return nil }
@@ -723,6 +1492,67 @@ final class VfsStore: ObservableObject {
         if let local = localFileURL(for: entry) { return local }
         guard let raw = try? core.streamUrl(id: entry.id) else { return nil }
         return URL(string: raw)
+    }
+
+    /// 播放结束：删除「边播边缓存」的临时文件（WebDAV 不支持 Range 时使用）。
+    /// 本地文件本来就没有缓存，直接忽略。
+    func releaseStream(_ entry: Entry) {
+        guard entry.kind == .file, !entry.id.hasPrefix("/") else { return }
+        core.releaseStream(id: entry.id)
+    }
+
+    /// 该条目所属 WebDAV 挂载的服务器直链（含 Basic 凭据），用于交给
+    /// Infuse / VLC 直接边读边播，避免先整份下载。
+    func directWebdavURL(for entry: Entry) -> URL? {
+        guard entry.kind == .file else { return nil }
+        guard let mount = savedMounts.first(where: { candidate in
+            guard candidate.kind == "webdav", let rootId = candidate.rootId else { return false }
+            return entry.id.hasPrefix(rootId)
+        }) else { return nil }
+        guard var url = URL(string: mount.host) else { return nil }
+
+        let rootId: String
+        if let saved = mount.rootId {
+            rootId = saved
+        } else {
+            let host = url.host ?? ""
+            let port = url.port.map { ":\($0)" } ?? ""
+            rootId = "webdav://\(host)\(port)/"
+        }
+        guard entry.id.hasPrefix(rootId) else { return nil }
+        let relative = entry.id.dropFirst(rootId.count)
+        for segment in relative.split(separator: "/", omittingEmptySubsequences: true) {
+            url.appendPathComponent(String(segment))
+        }
+
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        if !mount.username.isEmpty { components.user = mount.username }
+        if let password = KeychainStore.load(account: mount.id.uuidString), !password.isEmpty {
+            components.password = password
+        }
+        return components.url
+    }
+
+    /// 生成外部播放器的 x-callback-url。参数值按 x-callback-url 规范编码。
+    func externalPlayerURL(for entry: Entry, player: ExternalPlayer) -> URL? {
+        guard let direct = directWebdavURL(for: entry) else { return nil }
+        let encoded = direct.absoluteString
+            .addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        guard !encoded.isEmpty else { return nil }
+        switch player {
+        case .infuse:
+            let filename = entry.name
+                .addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+            return URL(string: "infuse://x-callback-url/play?url=\(encoded)&filename=\(filename)")
+        case .vlc:
+            return URL(string: "vlc-x-callback://x-callback-url/stream?url=\(encoded)")
+        }
+    }
+
+    /// 能直连该 WebDAV 文件且本机已安装的播放器。
+    func installedExternalPlayers(for entry: Entry) -> [ExternalPlayer] {
+        guard directWebdavURL(for: entry) != nil else { return [] }
+        return ExternalPlayer.allCases.filter(\.isInstalled)
     }
 
     func downloadToLocal(_ entry: Entry) {
@@ -742,11 +1572,15 @@ final class VfsStore: ObservableObject {
     }
 
     /// QuickLook / 分享需要一个真实文件 URL：本地直接给，远端先落到临时目录。
-    func localCopy(for entry: Entry) async -> URL? {
+    func localCopy(for entry: Entry, silent: Bool = false) async -> URL? {
         guard entry.kind == .file else { return nil }
         if let local = localFileURL(for: entry) { return local }
+        if let shortage = spaceShortage(for: entry) {
+            if !silent { errorMessage = shortage }
+            return nil
+        }
         guard let remote = streamURL(for: entry) else {
-            errorMessage = "无法生成文件地址"
+            if !silent { errorMessage = "无法生成文件地址" }
             return nil
         }
         do {
@@ -757,9 +1591,41 @@ final class VfsStore: ObservableObject {
             try FileManager.default.moveItem(at: temporary, to: destination)
             return destination
         } catch {
-            errorMessage = "准备文件失败：\(error.localizedDescription)"
+            if !silent {
+                errorMessage = "准备文件失败：\(error.localizedDescription)"
+            }
             return nil
         }
+    }
+
+    /// 完整复制一份到临时目录，带字节进度；用于交给 VLC 等不支持流式读取的外部 App。
+    func prepareExternalPlaybackCopy(
+        for entry: Entry,
+        onProgress: @escaping (Int64, Int64?) -> Void
+    ) async throws -> URL {
+        if let local = localFileURL(for: entry) { return local }
+        if let shortage = spaceShortage(for: entry) {
+            throw ExternalCopyError.notEnoughSpace(shortage)
+        }
+        guard let remote = streamURL(for: entry) else {
+            throw ExternalCopyError.noStreamURL
+        }
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString)-\(entry.name)")
+        try? FileManager.default.removeItem(at: destination)
+        let downloader = ProgressDownloader(
+            destination: destination,
+            onProgress: onProgress
+        )
+        return try await downloader.start(from: remote)
+    }
+
+    /// 远端文件交给别的 App 后，删掉我们临时下载的副本；用户自己的本地文件不动。
+    func cleanupTemporaryCopy(_ url: URL) {
+        let temporary = FileManager.default.temporaryDirectory.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        guard path.hasPrefix(temporary + "/") else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     func quickLookPayload(for entry: Entry) async -> QuickLookPayload? {

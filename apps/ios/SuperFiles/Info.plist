@@ -27,6 +27,14 @@
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <true/>
 
+    <!-- 检测/唤起可直连 WebDAV 的外部播放器（Infuse / VLC）。 -->
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>infuse</string>
+        <string>vlc-x-callback</string>
+        <string>vlc</string>
+    </array>
+
     <key>UILaunchScreen</key>
     <dict/>
     <key>UISupportedInterfaceOrientations</key>
@@ -54,6 +62,12 @@
     <!-- 直连局域网 NAS（WebDAV / SMB / SFTP）时的本地网络权限文案。 -->
     <key>NSLocalNetworkUsageDescription</key>
     <string>用于连接局域网内的 WebDAV / SMB / SFTP 存储，浏览与传输文件。</string>
+
+    <!-- 添加 SMB 存储时通过 Bonjour 自动发现局域网服务器。 -->
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_smb._tcp</string>
+    </array>
 
     <!-- M2 adds the File Provider extension. -->
 </dict>

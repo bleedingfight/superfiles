@@ -27,13 +27,17 @@ struct DestinationPicker: View {
                 Section("子文件夹") {
                     if loading {
                         HStack(spacing: Spacing.s2) {
-                            ProgressView()
+                            ProgressView().tint(Sf.primary)
                             Text("加载中…")
-                                .foregroundStyle(.secondary)
+                                .font(Sf.metaFont)
+                                .foregroundStyle(Sf.onSurfaceVariant)
                         }
+                        .listRowBackground(Sf.surfaceCard)
                     } else if directories.isEmpty {
                         Text("没有子文件夹")
-                            .foregroundStyle(.secondary)
+                            .font(Sf.metaFont)
+                            .foregroundStyle(Sf.onSurfaceVariant)
+                            .listRowBackground(Sf.surfaceCard)
                     } else {
                         ForEach(directories, id: \.id) { dir in
                             Button {
@@ -41,17 +45,23 @@ struct DestinationPicker: View {
                             } label: {
                                 HStack {
                                     Label(dir.name, systemImage: "folder")
+                                        .font(Sf.fileNameFont)
+                                        .foregroundStyle(Sf.onSurface)
                                         .lineLimit(1)
                                     Spacer()
                                     Image(systemName: "chevron.right")
-                                        .font(.caption)
-                                        .foregroundStyle(.tertiary)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(Sf.outline)
                                 }
                             }
+                            .listRowBackground(Sf.surfaceCard)
                         }
                     }
                 }
             }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Sf.surface)
             .navigationTitle("选择目标文件夹")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -78,14 +88,20 @@ struct DestinationPicker: View {
             .safeAreaInset(edge: .bottom) {
                 HStack {
                     Text(path)
-                        .font(.caption2)
+                        .font(Sf.footerFont)
+                        .foregroundStyle(Sf.onSurfaceVariant)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer()
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, Sf.safeMargin)
                 .padding(.vertical, 6)
-                .background(.thinMaterial)
+                .background(Sf.surface)
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(Sf.outline.opacity(0.25))
+                        .frame(height: 0.5)
+                }
             }
         }
         .onAppear {
@@ -99,14 +115,17 @@ struct DestinationPicker: View {
         } label: {
             HStack {
                 Label(title, systemImage: icon)
+                    .font(Sf.fileNameFont)
+                    .foregroundStyle(Sf.onSurface)
                     .lineLimit(1)
                 Spacer()
                 if currentId == id {
                     Image(systemName: "checkmark")
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(Sf.primary)
                 }
             }
         }
+        .listRowBackground(Sf.surfaceCard)
     }
 
     private func icon(for scheme: String) -> String {
