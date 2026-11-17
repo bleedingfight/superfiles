@@ -13,12 +13,15 @@ crates/vfs-core     统一虚拟文件系统 + local（jailed）/ WebDAV / SMB �
 crates/engine       传输引擎：预扫描、分块、进度、取消、冲突策略
 crates/index        SQLite 元数据索引 + 搜索
 crates/stream       回环 HTTP+Range 媒体流服务（供 AVPlayer/ExoPlayer 直接播放任意后端）
-crates/sfiles-ffi   UniFFI 出口（Swift/Kotlin 绑定源）
+crates/sfiles-ffi   UniFFI 出口（Swift/Kotlin/ArkTS 绑定源）
 crates/sfiles-cli   桌面 CLI（冒烟测试 / 未来终端端）
 bindings/swift      uniffi 生成的 Swift
 bindings/kotlin     uniffi 生成的 Kotlin
+bindings/arkts      uniffi-bindgen-arkts 生成的 ArkTS 包 + N-API adapter crate
 apps/ios            SwiftUI 应用
 apps/android        Jetpack Compose 应用（同 APK 支持 TV）
+apps/ohos           ArkTS 应用（HarmonyOS NEXT/TV，spike 已打通）
+apps/kio-worker     KDE 集成：Dolphin 的 `superfiles://` KIO worker（本地 + WebDAV/SMB/SFTP）
 docs                架构、平台能力矩阵、API 契约、路线图、ADR
 ```
 
@@ -80,6 +83,26 @@ iPad 版为三栏 `NavigationSplitView`：
 
 网络存储密码保存在系统 Keychain；复制/移动使用内核引擎并在传输中心显示进度。iPhone / Slide Over 折叠时详情自动改为 sheet 呈现。
 
+## 鸿蒙（HarmonyOS NEXT / TV）
+
+前置：rustup target `aarch64-unknown-linux-ohos`、DevEco command-line-tools（NDK）。
+
+```bash
+./scripts/gen-bindings-arkts.sh   # 改了 sfiles-ffi 导出后必跑（需 uniffi-bindgen-arkts）
+./scripts/build-ohos.sh           # 交叉编译内核+adapter → entry/libs/arm64-v8a/
+```
+
+然后用 DevEco Studio 打开 `apps/ohos` 运行。详见 `apps/ohos/README.md` 与
+`docs/02-platform-matrix.md §4`。当前为 spike：验证页已打通 open/建文件/列目录，
+完整 UI 未实现。
+
+## Linux 桌面（KDE Dolphin）
+
+把整个内核（沙盒本地 + WebDAV/SMB/SFTP）挂成 Dolphin 的 `superfiles://` 协议：
+`just kio` 构建安装（无需 root，装到 `~/.local`），地址栏输入 `superfiles:///`
+即可浏览、打开、复制所有已配置存储；改 `~/.config/superfiles/mounts.json` 后刷新根
+目录即时生效。详见 `apps/kio-worker/README.md`。
+
 ## 绑定生成
 
 ```bash
@@ -127,7 +150,9 @@ iPad 版为三栏 `NavigationSplitView`：
 - [x] Android 多语言（简体 / 繁體 / English）：默认英文、`values-zh` 简体、`values-b+zh+Hant` 繁體（OpenCC s2twp），系统语言自动切换 + Android 13「单应用语言」（`locales_config.xml`）；UI/通知/ViewModel 文案统一走 `L10n.t(R.string.…)`（447 条，含参数化文案），非中文系统回退英文
 - [x] 横屏/大屏自适应（docs/06 §7）：≥600dp 首页双列（左：问候/用量/本地存储，右：网络/收藏/最近）避免两侧大片留白；详情页宽窗「左预览 / 右信息」双列 + 底栏同宽居中；矮窗（横屏手机）/平板把底部导航换 `NavigationRail`；文件/收藏/我的/传输中心/近邻传输列表与网络存储表单 840dp 限宽居中，对话框 560dp 上限；竖屏保持 Figma 单列像素级不变
 - [x] SFTP 后端（vfs-core 层：russh 0.55 + russh-sftp，密码/私钥认证、原生随机读写 + SETSTAT.fsize、断线惰性重连 + 受限重试；id↔路径越狱单测 + OpenSSH 真机矩阵 `tests/sftp_live.rs`）
-- [ ] 云盘后端（M2/M3）
+- [x] 鸿蒙 NEXT 链路 spike（M2）：`aarch64-unknown-linux-ohos` 交叉编译通过（russh 换 ring provider 去除 aws-lc-sys）；`uniffi-bindgen-arkts` 生成 ArkTS 绑定 + N-API adapter（工具补丁适配 uniffi 0.32）；`apps/ohos` ArkTS 工程骨架 + 验证页（open/建文件/列目录）
+- [x] OHOS 运行环境兜底：`SuperFiles::open` 在 TMPDIR 缺失时重定向 `std::env::temp_dir()` 到 `<local_root>/.tmp`（Android/鸿蒙进程无 /tmp 写权限）
+- [x] 云盘 / 对象存储后端（M2/M3）：S3（SigV4，MinIO/R2/OSS）、Google Drive、Dropbox、OneDrive、115（设备码）——Android + 鸿蒙已接 UI；iOS 待接
 - [ ] iOS File Provider 扩展、Android DocumentsProvider（M2）
 - [ ] 媒体库、播放、投屏（M4）
 - [ ] Android TV 焦点优化、iPad 多窗口（M5）

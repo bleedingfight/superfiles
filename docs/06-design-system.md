@@ -1,7 +1,7 @@
 # 设计系统 v0 —— 双端基准
 
 目的：**一份基准，多端忠实实现**。统一的是变量与组件状态表，不是交互行为——
-iOS 用 HIG 手势（swipe 删除）、Android 用 Material 语义（trailing 按钮）、TV 用焦点遍历，
+iOS 用 HIG 手势（swipe 删除）、Android 用 Material 语义（trailing 按钮 + 同语义左滑）、TV 用焦点遍历，
 这些**平台正确性高于表面一致性**。
 
 工具路径：当前阶段**仓库即基准**（本文 + tokens 表）；人员和屏幕变多之后再上
@@ -133,7 +133,7 @@ extended FAB：图标 + 文案（`建立索引` / `索引 N 项`）。State = id
 
 | 项 | iOS | Android |
 |---|---|---|
-| 删除手势 | swipe actions | 行尾按钮（将来长按 menu） |
+| 删除手势 | swipe actions | trailing 按钮 + 同语义左滑（将来长按 menu；列表统一用 SwipeRevealRow，含传输中心） |
 | 返回 | 左上 chevron + 右滑 | 左上箭头 + 物理返回键 |
 | 取色 | 静态系统蓝（默认） | Material You 动态取色 |
 | 刷新手势 | `refreshable` 下拉 | 同语义（M1 加） |

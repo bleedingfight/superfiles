@@ -26,6 +26,9 @@
 - [x] Android：Foreground Service（`dataSync`）+ 通知栏实时进度（活跃传输拉启、空闲退场；POST_NOTIFICATIONS 运行时申请；修复传输轮询/取消/恢复跨内核路由）
 - [x] iOS：HTTP 后端的 background URLSession（`BackgroundDownloadManager`：任务映射持久化、同名避让、完成事件经 AppDelegate 冷启动回投；行内「下载到本地」经回环 streamUrl 落 Documents/下载/；ATS 放开本地网段）
 - [x] FTS5 搜索（中文分词/拼音）替换 LIKE（trigram：中文子串 + 全拼/首字母拼音 + 英文，默认 FTS5、短查询回退 LIKE；`source` 列为 M2 聚合索引打底）
+- [x] 索引与文件系统联动：增/删/改名/写入/复制/移动/压缩/解压成功后当场更新索引（删除立刻搜不到；目录改名纯 SQL 改前缀），读操作不再被扫描队列阻塞
+- [x] 索引范围与索引管理（Android）：本地存储（沙盒 + 共享存储）启动时自动增量索引；SMB/WebDAV/S3/云盘只有用户点「建立索引」后才入库；「我的 → 索引管理」按存储列出已索引条目数，左滑删除（本地索引删除前警告并说明后果），可单独重建
+- [x] 分类聚合走索引：`ext` 列 + 复合索引（`ext, modified_ms DESC`）；首屏 240 条走紧凑字节流（一次跨语言拷贝，避免 uniffi 逐字符串 JNA），剩余后台续载；隐藏文件默认不计入，与「显示隐藏文件」开关一致
 
 验收：1 GB 文件传输（FGS 保活）、杀进程后恢复（索引档案 + `pendingTransfers`）、断网下能看缓存目录（`listCached` 回退）。
 
@@ -48,8 +51,10 @@
 
 ## M3 — 云盘聚合
 
-- [ ] S3 兼容（OSS/COS/R2/MinIO）
-- [ ] OneDrive / Google Drive / Dropbox OAuth
+- [x] S3 兼容（OSS/COS/R2/MinIO）：SigV4 签名、path-style / virtual-host、`list-type=2` 分页、Range 下载、流式 PUT（UNSIGNED-PAYLOAD）、copy+delete 重命名、目录 marker 与递归删除；本地 moto/rclone 冒烟测试 `crates/vfs-core/examples/s3_smoke.rs`
+- [x] OneDrive / Google Drive / Dropbox OAuth（Android + 鸿蒙：loopback PKCE；Dropbox 走 127.0.0.1 精确回调）
+- [x] 115 设备码 + PKCE 授权（无 redirect、无 AppSecret）
+- [ ] iOS 端云盘接入（内核已支持，缺 UI 与授权流程）
 - [ ] 多账号、限流退避、配额显示
 - [ ] 双向同步（可选）：冲突版本保留策略
 - [ ] 离线收藏与自动下载
@@ -86,7 +91,7 @@
 - macOS（SwiftUI 复用 + AppKit 菜单/QuickLook 插件）
 - Windows（WinUI3 + Rust C ABI）
 - Linux（GTK4 + 同一个 CLI）
-- 鸿蒙 NEXT/TV（ArkTS + `uniffi-bindgen-arkts`）
+- 鸿蒙 NEXT/TV（ArkTS + `uniffi-bindgen-arkts`；M2 spike 已打通，见 docs/02 §4）
 - tvOS（仅「网络存储浏览 + 播放 + 投屏」）
 
 ## 风险登记

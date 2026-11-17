@@ -52,10 +52,22 @@
 - 文案统一 `L10n.t(R.string.…)`（Application 上下文初始化），Compose / ViewModel / 前台服务/通知共用；带参数用 `%1$s` 占位。
 - 新增文案：两套 XML 同步加同名字符串（key 为内容哈希/递增编号），中文自然语言搜索的关键词表（`NaturalLanguageQueryParser`）是解析器数据，不参与 UI 翻译。
 
-## 4. 鸿蒙（规划）
+## 4. 鸿蒙（M2 spike 已落地）
 
-- 鸿蒙 NEXT：ArkTS UI + Rust 内核通过 N-API（`uniffi-bindgen-arkts` 可从同一 `libsuperfiles` 生成 ArkTS 绑定）。
-- 沙箱内可访问：应用沙箱目录、Picker 选择的文件、FileShare。
+- 鸿蒙 NEXT：ArkTS UI（`apps/ohos`）+ Rust 内核走 N-API。
+  - 绑定：ohos-rs/uniffi-bindgen-arkts 从同一 `libsuperfiles.so` 生成 ArkTS
+    包 + N-API adapter crate（`bindings/arkts`）。注意：该工具发布版只支持
+    uniffi 0.31，本仓库用 0.32，需按 `scripts/gen-bindings-arkts.sh` 头注释
+    打 4 处小补丁（0.32 元数据与 API、`Type::Box/Set` 新变体、callback 的
+    u64→BigInt / f32→f64 修正）。
+  - 交叉编译：`scripts/build-ohos.sh`（aarch64-unknown-linux-ohos，NDK clang；
+    `russh` 必须用 `ring` provider——默认的 aws-lc-rs 含 CMake+ARM 汇编，是
+    OHOS 交叉编译的头号坑）。产物：内核 `libsuperfiles.so` + adapter
+    `libsuperfiles_arkts.so`，两个都打进 HAP。
+  - 沙箱内可访问：应用沙箱目录、Picker 选择的文件、FileShare。
+  - TMPDIR：OHOS 应用进程无 TMPDIR 且 /tmp 不可写，内核已在
+    `SuperFiles::open` 时兜底到 `<local_root>/.tmp`。
+  - spike 页已验证：open + createFile + list 真机链路（见 apps/ohos/README）。
 - 鸿蒙 TV：同一 ArkTS 工程做布局适配（遥控器焦点）。
 - 鸿蒙 4 及以下：直接复用 Android APK。
 
