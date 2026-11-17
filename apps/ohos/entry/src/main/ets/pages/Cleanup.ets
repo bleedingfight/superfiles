@@ -21,6 +21,17 @@ interface CleanItem {
   modified: number;
 }
 
+/**
+ * 清理页的「传输到本机」条目：同目标同文件可能被传过多次（重试/测试），
+ * 每次都是一条任务记录；空间视角它们只有一个文件，折叠为一组——
+ * head 取最近一次（时间/大小显示），ids 收齐该组全部记录行，
+ * 删除时一并清掉。
+ */
+interface ArrGroup {
+  head: CompletedTransfer;
+  ids: string[];
+}
+
 const SORT_SIZE: string = 'size';
 const SORT_TIME: string = 'time';
 const SORT_NAME: string = 'name';
@@ -34,7 +45,7 @@ const SHEET_PICK: string = 'pick';
 @Component
 struct Cleanup {
   @State items: CleanItem[] = [];
-  @State arrivals: CompletedTransfer[] = [];
+  @State arrivals: ArrGroup[] = [];
   @State loaded: boolean = false;
   @State sweeping: boolean = false;
   @State error: string = '';
@@ -215,21 +226,21 @@ struct Cleanup {
     this.items = rows;
   }
 
-  private sortArrivals(rows: CompletedTransfer[]): CompletedTransfer[] {
+  private sortArrivals(groups: ArrGroup[]): ArrGroup[] {
     const asc: number = this.sortAsc ? 1 : -1;
-    rows.sort((a: CompletedTransfer, b: CompletedTransfer) => {
+    groups.sort((a: ArrGroup, b: ArrGroup) => {
       if (this.sortKey === SORT_SIZE) {
-        return (Number(a.bytesTotal) - Number(b.bytesTotal)) * asc;
+        return (Number(a.head.bytesTotal) - Number(b.head.bytesTotal)) * asc;
       }
       if (this.sortKey === SORT_TIME) {
-        return (Number(a.finishedAtMs) - Number(b.finishedAtMs)) * asc;
+        return (Number(a.head.finishedAtMs) - Number(b.head.finishedAtMs)) * asc;
       }
-      const an: string = this.arrivalTitle(a).toLowerCase();
-      const bn: string = this.arrivalTitle(b).toLowerCase();
+      const an: string = this.arrivalTitle(a.head).toLowerCase();
+      const bn: string = this.arrivalTitle(b.head).toLowerCase();
       const cmp: number = an === bn ? 0 : (an < bn ? -1 : 1);
       return cmp * asc;
     });
-    return rows;
+    return groups;
   }
 
   private sortLabel(): string {
@@ -244,6 +255,16 @@ struct Cleanup {
 
   // ---- 传输到本机（完成记录，2s 轮询同步） ---------------------------------
 
+  /** 折叠签名：目标目录 + 传输对象（源文件名集合）一致 = 生命周期同一个文件。 */
+  private arrivalSignature(r: CompletedTransfer): string {
+    const names: string[] = [];
+    for (const src of r.sources) {
+      names.push(this.basename(src));
+    }
+    names.sort();
+    return `${r.destDir}|${names.join('\u0001')}`;
+  }
+
   private refreshArrivals(): void {
     if (this.core === null) {
       return;
@@ -257,22 +278,40 @@ struct Cleanup {
         }
       }
       rows = local;
+      // 折叠：同签名多条任务（重试/复测）只显示最近的一次；ids 收全组，
+      // 删除/移动时一次性清干净，不留「幽灵记录」。
+      const bySignature: Map<string, ArrGroup> = new Map();
+      for (const r of rows) {
+        const sig: string = this.arrivalSignature(r);
+        const existing: ArrGroup | undefined = bySignature.get(sig);
+        if (existing === undefined) {
+          bySignature.set(sig, { head: r, ids: [r.id] });
+        } else {
+          existing.ids.push(r.id);
+          if (Number(r.finishedAtMs) > Number(existing.head.finishedAtMs)) {
+            existing.head = r;
+          }
+        }
+      }
+      const groups: ArrGroup[] = [];
+      for (const g of bySignature.values()) {
+        groups.push(g);
+      }
       if (this.pollTimer < 0) {
         this.pollTimer = setInterval(() => this.refreshArrivals(), 2000);
       }
-      // 内容变了才落 @State（列表刷新会收回展开的左滑菜单）
-      if (this.arrivalSig(rows) !== this.arrivalSig(this.arrivals)) {
-        this.arrivals = this.sortArrivals(rows);
+      if (this.groupSig(groups) !== this.groupSig(this.arrivals)) {
+        this.arrivals = this.sortArrivals(groups);
       }
     } catch (e) {
       // 最近传输读不到不阻塞页面
     }
   }
 
-  private arrivalSig(rows: CompletedTransfer[]): string {
+  private groupSig(groups: ArrGroup[]): string {
     let sig: string = '';
-    for (const r of rows) {
-      sig += `${r.id}:${Number(r.bytesTotal)}:${Number(r.finishedAtMs)}|`;
+    for (const g of groups) {
+      sig += `${g.head.id}:${Number(g.head.bytesTotal)}:${Number(g.head.finishedAtMs)}:${g.ids.length}|`;
     }
     return sig;
   }
@@ -290,11 +329,11 @@ struct Cleanup {
     return out;
   }
 
-  private arrivalById(id: string): CompletedTransfer {
-    let found: CompletedTransfer = this.arrivals[0];
-    for (const r of this.arrivals) {
-      if (r.id === id) {
-        found = r;
+  private groupById(id: string): ArrGroup {
+    let found: ArrGroup = this.arrivals[0];
+    for (const g of this.arrivals) {
+      if (g.head.id === id) {
+        found = g;
       }
     }
     return found;
@@ -312,11 +351,18 @@ struct Cleanup {
     return first;
   }
 
-  /** 所在目录的展示名：displayPath 失败（进程重启首查等）兜底 basename。 */
+  /** 所在目录的展示名：displayPath 裁掉应用沙箱前缀；取失败兜底 basename。 */
   private arrivalDirLabel(r: CompletedTransfer): string {
     if (this.core !== null) {
       try {
-        const p: string = this.core.displayPath(r.destDir);
+        let p: string = this.core.displayPath(r.destDir);
+        const marker: string = 'storage/';
+        const at: number = p.lastIndexOf(marker);
+        if (at >= 0) {
+          p = p.substring(at + marker.length);
+        } else if (p.startsWith('/')) {
+          p = p.replace(/^\/+/, '');
+        }
         if (p.length > 0) {
           return p;
         }
@@ -354,8 +400,8 @@ struct Cleanup {
 
   private selectAll(): void {
     const all: string[] = [];
-    for (const r of this.arrivals) {
-      all.push(`A:${r.id}`);
+    for (const g of this.arrivals) {
+      all.push(`A:${g.head.id}`);
     }
     for (const it of this.items) {
       all.push(`L:${it.id}`);
@@ -371,9 +417,9 @@ struct Cleanup {
   /** 多选里某个 tag 的展示名（批量提示、移动确认用）。 */
   private nameOfTag(tag: string): string {
     if (tag.startsWith('A:')) {
-      for (const r of this.arrivals) {
-        if (r.id === tag.substring(2)) {
-          return this.arrivalTitle(r);
+      for (const g of this.arrivals) {
+        if (g.head.id === tag.substring(2)) {
+          return this.arrivalTitle(g.head);
         }
       }
     }
@@ -385,13 +431,14 @@ struct Cleanup {
     return tag;
   }
 
+  /** 删除一个条目：arrival = 实际目标文件 + 该组全部记录行；local = 文件/目录本体。 */
   private deleteOne(tag: string): void {
     if (this.core === null) {
       return;
     }
     if (tag.startsWith('A:')) {
-      const r: CompletedTransfer = this.arrivalById(tag.substring(2));
-      for (const target of this.arrivalTargets(r)) {
+      const g: ArrGroup = this.groupById(tag.substring(2));
+      for (const target of this.arrivalTargets(g.head)) {
         try {
           this.core.stat(target);
           this.core.remove(target, false);
@@ -399,10 +446,12 @@ struct Cleanup {
           // 目标文件已不存在（改名/移动过）——跳过
         }
       }
-      try {
-        this.core.forgetTransfer(r.id);
-      } catch (e) {
-        // 行已不在也不阻塞
+      for (const id of g.ids) {
+        try {
+          this.core.forgetTransfer(id);
+        } catch (e) {
+          // 行已不在也不阻塞
+        }
       }
       return;
     }
@@ -436,9 +485,9 @@ struct Cleanup {
       return;
     }
     if (this.confirmKind === 'arrival') {
+      const g: ArrGroup = this.groupById(this.targetId);
       let removed: number = 0;
-      const r: CompletedTransfer = this.arrivalById(this.targetId);
-      for (const target of this.arrivalTargets(r)) {
+      for (const target of this.arrivalTargets(g.head)) {
         try {
           this.core.stat(target);
           this.core.remove(target, false);
@@ -447,10 +496,12 @@ struct Cleanup {
           // 目标文件已不存在（改名/移动过）——跳过
         }
       }
-      try {
-        this.core.forgetTransfer(this.targetId);
-      } catch (e) {
-        // 行已不在也不阻塞
+      for (const id of g.ids) {
+        try {
+          this.core.forgetTransfer(id);
+        } catch (e) {
+          // 行已不在也不阻塞
+        }
       }
       this.notice = this.tt('cl.deleted', `${removed} ${this.targetName}`);
       this.confirming = false;
@@ -520,8 +571,8 @@ struct Cleanup {
     const sources: string[] = [];
     for (const tag of this.selected) {
       if (tag.startsWith('A:')) {
-        const r: CompletedTransfer = this.arrivalById(tag.substring(2));
-        for (const target of this.arrivalTargets(r)) {
+        const g: ArrGroup = this.groupById(tag.substring(2));
+        for (const target of this.arrivalTargets(g.head)) {
           sources.push(target);
         }
       } else {
@@ -563,23 +614,23 @@ struct Cleanup {
   }
 
   @Builder
-  arrivalRow(r: CompletedTransfer) {
+  arrivalRow(g: ArrGroup) {
     Row({ space: SPACE3 }) {
-      this.selDotIf(`A:${r.id}`)
+      this.selDotIf(`A:${g.head.id}`)
       Text('⇣')
         .fontSize(16)
         .fontColor(this.th().primary)
       Column({ space: 2 }) {
-        Text(this.arrivalTitle(r))
+        Text(this.arrivalTitle(g.head))
           .fontSize(T_FILENAME)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.th().onSurface)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
-        Text(`${formatBytes(Number(r.bytesTotal))} · ${this.tt('cl.atDir', this.arrivalDirLabel(r))}` +
-          ` · ${this.tt('cl.arrivedAt')} ${formatClock(Number(r.finishedAtMs))}` +
-          (Number(r.filesTotal) > 1 ? ` · ${Number(r.filesTotal)}${this.tt('cl.files')}` : ''))
+        Text(`${formatBytes(Number(g.head.bytesTotal))} · ${this.tt('cl.atDir', this.arrivalDirLabel(g.head))}` +
+          ` · ${this.tt('cl.arrivedAt')} ${formatClock(Number(g.head.finishedAtMs))}` +
+          (Number(g.head.filesTotal) > 1 ? ` · ${Number(g.head.filesTotal)}${this.tt('cl.files')}` : ''))
           .fontSize(T_SECONDARY)
           .fontColor(this.th().onSurfaceVariant)
           .maxLines(1)
@@ -595,12 +646,12 @@ struct Cleanup {
     .borderRadius(RADIUS_M)
     .onClick(() => {
       if (this.selecting) {
-        this.toggleSelect(`A:${r.id}`);
+        this.toggleSelect(`A:${g.head.id}`);
       }
     })
     .gesture(LongPressGesture().onAction(() => {
       if (!this.selecting) {
-        this.beginSelecting(`A:${r.id}`);
+        this.beginSelecting(`A:${g.head.id}`);
       }
     }))
   }
@@ -736,10 +787,10 @@ struct Cleanup {
                   .width('100%')
                   .padding({ left: SCREEN_MARGIN, right: SCREEN_MARGIN, bottom: SPACE2 })
                 List({ space: 0 }) {
-                  ForEach(this.arrivals, (r: CompletedTransfer, index: number) => {
+                  ForEach(this.arrivals, (g: ArrGroup, index: number) => {
                     ListItem() {
                       Column() {
-                        this.arrivalRow(r)
+                        this.arrivalRow(g)
                         if (index !== this.arrivals.length - 1) {
                           Divider().color(this.th().divider)
                         }
@@ -751,15 +802,15 @@ struct Cleanup {
                         builder: () => {
                           this.swipeDeleteBtn(this.tt('common.delete'), () => {
                             this.confirmKind = 'arrival';
-                            this.targetId = r.id;
-                            this.targetName = this.arrivalTitle(r);
+                            this.targetId = g.head.id;
+                            this.targetName = this.arrivalTitle(g.head);
                             this.confirming = true;
                           })
                         },
                         actionAreaDistance: 56
                       }
                     })
-                  }, (r: CompletedTransfer) => r.id)
+                  }, (g: ArrGroup) => g.head.id)
                 }
                 .width('100%')
                 .padding({ bottom: SPACE3 })
