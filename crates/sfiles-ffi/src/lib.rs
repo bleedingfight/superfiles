@@ -252,10 +252,12 @@ pub struct PendingTransfer {
     pub bytes_done: u64,
 }
 
-/// A finished (completed) transfer as the storage-cleanup page sees it:
-/// what landed where, how big, and when it finished.
+/// A terminal transfer as the storage-cleanup page sees it: what was being
+/// moved where, how much of it actually landed, and how it ended. Failed or
+/// cancelled jobs with a partial copy still own real bytes on disk — the
+/// cleanup page shows them so users can reclaim the leftovers.
 #[derive(uniffi::Record)]
-pub struct CompletedTransfer {
+pub struct TransferRecord {
     pub id: String,
     /// Destination files = join(dest_dir, basename(source)); the cleanup
     /// page deletes exactly these when the user reclaims the space.
@@ -264,12 +266,22 @@ pub struct CompletedTransfer {
     pub is_move: bool,
     pub files_total: u64,
     pub bytes_total: u64,
+    /// Bytes actually written before the job ended (== bytes_total on
+    /// completion; the partial footprint on failure/cancel).
+    pub bytes_done: u64,
     /// Epoch ms of the terminal write (row updated_at).
     pub finished_at_ms: i64,
+    /// Terminal state of the job (completed / failed / cancelled).
+    pub state: TransferState,
 }
 
-impl From<sfiles_index::StoredTransfer> for CompletedTransfer {
+impl From<sfiles_index::StoredTransfer> for TransferRecord {
     fn from(stored: sfiles_index::StoredTransfer) -> Self {
+        let state = match stored.state {
+            sfiles_index::TransferTaskState::Completed => TransferState::Completed,
+            sfiles_index::TransferTaskState::Failed => TransferState::Failed,
+            _ => TransferState::Cancelled,
+        };
         Self {
             id: stored.id,
             sources: stored.sources,
@@ -277,7 +289,9 @@ impl From<sfiles_index::StoredTransfer> for CompletedTransfer {
             is_move: stored.is_move,
             files_total: stored.files_total,
             bytes_total: stored.bytes_total,
+            bytes_done: stored.bytes_done,
             finished_at_ms: stored.updated_at,
+            state,
         }
     }
 }
@@ -1579,17 +1593,18 @@ impl SuperFiles {
             .collect())
     }
 
-    /// Recently completed jobs, newest first — the storage-cleanup page
-    /// lists what past transfers landed on this device so the user can
-    /// reclaim space (delete actual destination files, then the row).
-    /// Only jobs whose destination was this device's local root make
-    /// sense for cleanup, so remote-dst jobs are filtered out there.
-    pub fn completed_transfers(&self, limit: u32) -> Result<Vec<CompletedTransfer>, SfError> {
+    /// Recently terminal jobs (completed / failed / cancelled), newest first
+    /// — the storage-cleanup page lists what past transfers put on this
+    /// device, including the partial leftovers of failed jobs, so the user
+    /// can reclaim space (delete actual destination files, then the rows).
+    /// Only jobs whose destination was this device's local root make sense
+    /// for cleanup, so remote-dst jobs are filtered out there.
+    pub fn transfer_records(&self, limit: u32) -> Result<Vec<TransferRecord>, SfError> {
         let index = self.require_index()?.clone();
         Ok(index
-            .load_recent_completed_transfers(limit)?
+            .load_recent_terminal_transfers(limit)?
             .into_iter()
-            .map(CompletedTransfer::from)
+            .map(TransferRecord::from)
             .collect())
     }
 

@@ -52,8 +52,6 @@ export declare function uniffiSuperfilesFnMethodSuperfilesClearIndex(ptr: bigint
 
 export declare function uniffiSuperfilesFnMethodSuperfilesClearIndexPrefix(ptr: bigint, prefix: Uint8Array): bigint;
 
-export declare function uniffiSuperfilesFnMethodSuperfilesCompletedTransfers(ptr: bigint, limit: number): Uint8Array;
-
 export declare function uniffiSuperfilesFnMethodSuperfilesCompressZip(ptr: bigint, sources: Uint8Array, destDir: Uint8Array, name: Uint8Array, method: Uint8Array, listener: bigint): Uint8Array;
 
 export declare function uniffiSuperfilesFnMethodSuperfilesCountByExts(ptr: bigint, exts: Uint8Array, includeHidden: number): bigint;
@@ -163,6 +161,8 @@ export declare function uniffiSuperfilesFnMethodSuperfilesStopLocalSend(ptr: big
 export declare function uniffiSuperfilesFnMethodSuperfilesStopShare(ptr: bigint): number;
 
 export declare function uniffiSuperfilesFnMethodSuperfilesStreamUrl(ptr: bigint, id: Uint8Array): Uint8Array;
+
+export declare function uniffiSuperfilesFnMethodSuperfilesTransferRecords(ptr: bigint, limit: number): Uint8Array;
 
 export declare function uniffiSuperfilesFnMethodSuperfilesTransferSnapshot(ptr: bigint, id: Uint8Array): Uint8Array;
 

@@ -37,27 +37,6 @@ export interface Capabilities {
 }
 
 /**
- * A finished (completed) transfer as the storage-cleanup page sees it:
- * what landed where, how big, and when it finished.
- */
-export interface CompletedTransfer {
-  id: string;
-  /**
-   * Destination files = join(dest_dir, basename(source)); the cleanup
-   * page deletes exactly these when the user reclaims the space.
-   */
-  sources: Array<string>;
-  destDir: string;
-  isMove: boolean;
-  filesTotal: bigint;
-  bytesTotal: bigint;
-  /**
-   * Epoch ms of the terminal write (row updated_at).
-   */
-  finishedAtMs: bigint;
-}
-
-/**
  * A single filesystem entry as seen by the UI.
  */
 export interface Entry {
@@ -159,6 +138,38 @@ export interface ShareInfo {
   url: string;
   port: number;
   fileCount: number;
+}
+
+/**
+ * A terminal transfer as the storage-cleanup page sees it: what was being
+ * moved where, how much of it actually landed, and how it ended. Failed or
+ * cancelled jobs with a partial copy still own real bytes on disk — the
+ * cleanup page shows them so users can reclaim the leftovers.
+ */
+export interface TransferRecord {
+  id: string;
+  /**
+   * Destination files = join(dest_dir, basename(source)); the cleanup
+   * page deletes exactly these when the user reclaims the space.
+   */
+  sources: Array<string>;
+  destDir: string;
+  isMove: boolean;
+  filesTotal: bigint;
+  bytesTotal: bigint;
+  /**
+   * Bytes actually written before the job ended (== bytes_total on
+   * completion; the partial footprint on failure/cancel).
+   */
+  bytesDone: bigint;
+  /**
+   * Epoch ms of the terminal write (row updated_at).
+   */
+  finishedAtMs: bigint;
+  /**
+   * Terminal state of the job (completed / failed / cancelled).
+   */
+  state: TransferState;
 }
 
 /**
@@ -372,32 +383,6 @@ export function __arktsReadCapabilities(reader: ByteReader): Capabilities {
 
 }
 
-export function __arktsWriteCompletedTransfer(writer: ByteWriter, value: CompletedTransfer): void {
-  writer.writeLengthPrefixedBytes(FfiConverterString.lower(value.id));
-  writer.writeI32(value.sources.length); for (const item of value.sources) { writer.writeLengthPrefixedBytes(FfiConverterString.lower(item)); }
-  writer.writeLengthPrefixedBytes(FfiConverterString.lower(value.destDir));
-  writer.writeI8(value.isMove ? 1 : 0);
-  writer.writeI64(value.filesTotal);
-  writer.writeI64(value.bytesTotal);
-  writer.writeI64(value.finishedAtMs);
-
-}
-
-export function __arktsReadCompletedTransfer(reader: ByteReader): CompletedTransfer {
-
-  return {
-    id: FfiConverterString.lift(reader.readLengthPrefixedBytes()),
-    sources: Array.from({ length: reader.readI32() }, () => FfiConverterString.lift(reader.readLengthPrefixedBytes())),
-    destDir: FfiConverterString.lift(reader.readLengthPrefixedBytes()),
-    isMove: reader.readI8() !== 0,
-    filesTotal: reader.readI64(),
-    bytesTotal: reader.readI64(),
-    finishedAtMs: reader.readI64(),
-
-  };
-
-}
-
 export function __arktsWriteEntry(writer: ByteWriter, value: Entry): void {
   writer.writeLengthPrefixedBytes(FfiConverterString.lower(value.id));
   if (value.parent === undefined) { writer.writeI8(0); } else { writer.writeI8(1); writer.writeLengthPrefixedBytes(FfiConverterString.lower(value.parent)); }
@@ -589,6 +574,36 @@ export function __arktsReadShareInfo(reader: ByteReader): ShareInfo {
     url: FfiConverterString.lift(reader.readLengthPrefixedBytes()),
     port: reader.readU16(),
     fileCount: reader.readU32(),
+
+  };
+
+}
+
+export function __arktsWriteTransferRecord(writer: ByteWriter, value: TransferRecord): void {
+  writer.writeLengthPrefixedBytes(FfiConverterString.lower(value.id));
+  writer.writeI32(value.sources.length); for (const item of value.sources) { writer.writeLengthPrefixedBytes(FfiConverterString.lower(item)); }
+  writer.writeLengthPrefixedBytes(FfiConverterString.lower(value.destDir));
+  writer.writeI8(value.isMove ? 1 : 0);
+  writer.writeI64(value.filesTotal);
+  writer.writeI64(value.bytesTotal);
+  writer.writeI64(value.bytesDone);
+  writer.writeI64(value.finishedAtMs);
+  writer.writeI32(value.state as number);
+
+}
+
+export function __arktsReadTransferRecord(reader: ByteReader): TransferRecord {
+
+  return {
+    id: FfiConverterString.lift(reader.readLengthPrefixedBytes()),
+    sources: Array.from({ length: reader.readI32() }, () => FfiConverterString.lift(reader.readLengthPrefixedBytes())),
+    destDir: FfiConverterString.lift(reader.readLengthPrefixedBytes()),
+    isMove: reader.readI8() !== 0,
+    filesTotal: reader.readI64(),
+    bytesTotal: reader.readI64(),
+    bytesDone: reader.readI64(),
+    finishedAtMs: reader.readI64(),
+    state: reader.readI32() as TransferState,
 
   };
 
@@ -825,36 +840,6 @@ export function __arktsLiftCapabilities(bytes: Uint8Array): Capabilities {
 
   const reader = new ByteReader(bytes);
   return __arktsReadCapabilities(reader);
-
-}
-
-export function __arktsLowerCompletedTransfer(value: CompletedTransfer): Uint8Array {
-
-  const writer = new ByteWriter();
-  __arktsWriteCompletedTransfer(writer, value);
-  return writer.finish();
-
-}
-
-export function __arktsLiftCompletedTransfer(bytes: Uint8Array): CompletedTransfer {
-
-  const reader = new ByteReader(bytes);
-  return __arktsReadCompletedTransfer(reader);
-
-}
-
-export function __arktsLowerSequenceCompletedTransfer(value: Array<CompletedTransfer>): Uint8Array {
-
-  const writer = new ByteWriter();
-  writer.writeI32(value.length); for (const item of value) { __arktsWriteCompletedTransfer(writer, item); }
-  return writer.finish();
-
-}
-
-export function __arktsLiftSequenceCompletedTransfer(bytes: Uint8Array): Array<CompletedTransfer> {
-
-  const reader = new ByteReader(bytes);
-  return Array.from({ length: reader.readI32() }, () => __arktsReadCompletedTransfer(reader));
 
 }
 
@@ -1141,6 +1126,36 @@ export function __arktsLiftShareInfo(bytes: Uint8Array): ShareInfo {
 
   const reader = new ByteReader(bytes);
   return __arktsReadShareInfo(reader);
+
+}
+
+export function __arktsLowerTransferRecord(value: TransferRecord): Uint8Array {
+
+  const writer = new ByteWriter();
+  __arktsWriteTransferRecord(writer, value);
+  return writer.finish();
+
+}
+
+export function __arktsLiftTransferRecord(bytes: Uint8Array): TransferRecord {
+
+  const reader = new ByteReader(bytes);
+  return __arktsReadTransferRecord(reader);
+
+}
+
+export function __arktsLowerSequenceTransferRecord(value: Array<TransferRecord>): Uint8Array {
+
+  const writer = new ByteWriter();
+  writer.writeI32(value.length); for (const item of value) { __arktsWriteTransferRecord(writer, item); }
+  return writer.finish();
+
+}
+
+export function __arktsLiftSequenceTransferRecord(bytes: Uint8Array): Array<TransferRecord> {
+
+  const reader = new ByteReader(bytes);
+  return Array.from({ length: reader.readI32() }, () => __arktsReadTransferRecord(reader));
 
 }
 
@@ -1485,14 +1500,6 @@ export class SuperFiles {
   clearIndexPrefix(prefix: string): bigint {
     try {
       return BigInt(native.uniffiSuperfilesFnMethodSuperfilesClearIndexPrefix(native.uniffiSuperfilesFnCloneSuperfiles(this.uniffiHandle()), __arktsLowerString(prefix)));
-    } catch (error) {
-      __arktsRethrowNativeError(error, __arktsLiftSfError);
-    }
-  }
-
-  completedTransfers(limit: number): Array<CompletedTransfer> {
-    try {
-      return __arktsLiftSequenceCompletedTransfer(native.uniffiSuperfilesFnMethodSuperfilesCompletedTransfers(native.uniffiSuperfilesFnCloneSuperfiles(this.uniffiHandle()), limit)) as Array<CompletedTransfer>;
     } catch (error) {
       __arktsRethrowNativeError(error, __arktsLiftSfError);
     }
@@ -1888,6 +1895,14 @@ export class SuperFiles {
   streamUrl(id: string): string {
     try {
       return __arktsLiftString(native.uniffiSuperfilesFnMethodSuperfilesStreamUrl(native.uniffiSuperfilesFnCloneSuperfiles(this.uniffiHandle()), __arktsLowerString(id))) as string;
+    } catch (error) {
+      __arktsRethrowNativeError(error, __arktsLiftSfError);
+    }
+  }
+
+  transferRecords(limit: number): Array<TransferRecord> {
+    try {
+      return __arktsLiftSequenceTransferRecord(native.uniffiSuperfilesFnMethodSuperfilesTransferRecords(native.uniffiSuperfilesFnCloneSuperfiles(this.uniffiHandle()), limit)) as Array<TransferRecord>;
     } catch (error) {
       __arktsRethrowNativeError(error, __arktsLiftSfError);
     }

@@ -227,9 +227,11 @@ pub(super) fn load_unfinished_transfers(conn: &Connection) -> Result<Vec<StoredT
     Ok(transfers)
 }
 
-/// Recently finished jobs, newest first — the storage-cleanup page shows
-/// what past transfers landed on this device so users can reclaim space.
-pub(super) fn load_recent_completed_transfers(
+/// Recently terminal jobs, newest first. Completed rows feed the storage-
+/// cleanup page; failed/cancelled rows matter too — a failed copy may have
+/// already written part of the destination, and those leftovers need to be
+/// user-visible so the cleanup page can reclaim them.
+pub(super) fn load_recent_terminal_transfers(
     conn: &Connection,
     limit: u32,
 ) -> Result<Vec<StoredTransfer>> {
@@ -239,7 +241,7 @@ pub(super) fn load_recent_completed_transfers(
                     files_total, files_done, bytes_total, bytes_done,
                     file_offsets_json, error, created_at, updated_at
              FROM transfers
-             WHERE state = 'completed'
+             WHERE state IN ('completed', 'failed', 'cancelled')
              ORDER BY updated_at DESC
              LIMIT ?1",
         )

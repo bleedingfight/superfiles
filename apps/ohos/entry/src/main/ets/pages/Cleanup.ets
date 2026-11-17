@@ -1,6 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { router } from '@kit.ArkUI';
-import { CompletedTransfer, ConflictPolicy, Entry, EntryKind, SuperFiles } from '@superfiles/core';
+import { ConflictPolicy, Entry, EntryKind, SuperFiles, TransferRecord, TransferState } from '@superfiles/core';
 import { getCore } from '../common/Core';
 import { formatBytes, formatDate, formatClock, errText } from '../common/Format';
 import { FileIcon } from '../common/FileIcon';
@@ -24,12 +24,20 @@ interface CleanItem {
 /**
  * 清理页的「传输到本机」条目：同目标同文件可能被传过多次（重试/测试），
  * 每次都是一条任务记录；空间视角它们只有一个文件，折叠为一组——
- * head 取最近一次（时间/大小显示），ids 收齐该组全部记录行，
- * 删除时一并清掉。
+ * head 优先取最近一次成功（显示完整大小），全组失败则取最近终态行
+ * （显示已写入的残余），ids 收齐该组全部记录行，删除时一并清掉。
  */
 interface ArrGroup {
-  head: CompletedTransfer;
+  head: TransferRecord;
   ids: string[];
+}
+
+/** 终态行是否值得展示：成功全量展示；失败/中断要有残余（bytes_done>0）。 */
+function arrivalVisible(r: TransferRecord): boolean {
+  if (r.state === TransferState.Completed) {
+    return true;
+  }
+  return Number(r.bytesDone) > 0 && r.destDir.startsWith('/');
 }
 
 const SORT_SIZE: string = 'size';
@@ -256,7 +264,7 @@ struct Cleanup {
   // ---- 传输到本机（完成记录，2s 轮询同步） ---------------------------------
 
   /** 折叠签名：目标目录 + 传输对象（源文件名集合）一致 = 生命周期同一个文件。 */
-  private arrivalSignature(r: CompletedTransfer): string {
+  private arrivalSignature(r: TransferRecord): string {
     const names: string[] = [];
     for (const src of r.sources) {
       names.push(this.basename(src));
@@ -270,16 +278,17 @@ struct Cleanup {
       return;
     }
     try {
-      let rows: CompletedTransfer[] = this.core.completedTransfers(50);
-      const local: CompletedTransfer[] = [];
+      let rows: TransferRecord[] = this.core.transferRecords(50);
+      const visible: TransferRecord[] = [];
       for (const r of rows) {
-        if (r.destDir.startsWith('/')) {
-          local.push(r); // 只关心落到本机的
+        // 只关心落到本机的；失败的要有残余（已写入的字节）才值得展示
+        if (r.destDir.startsWith('/') && arrivalVisible(r)) {
+          visible.push(r);
         }
       }
-      rows = local;
-      // 折叠：同签名多条任务（重试/复测）只显示最近的一次；ids 收全组，
-      // 删除/移动时一次性清干净，不留「幽灵记录」。
+      rows = visible;
+      // 折叠：同签名多条任务（重试/复测）只显示一行；成功优先、否则最新
+      // 终态；ids 收全组，删除/移动时一次性清干净，不留「幽灵记录」。
       const bySignature: Map<string, ArrGroup> = new Map();
       for (const r of rows) {
         const sig: string = this.arrivalSignature(r);
@@ -288,7 +297,10 @@ struct Cleanup {
           bySignature.set(sig, { head: r, ids: [r.id] });
         } else {
           existing.ids.push(r.id);
-          if (Number(r.finishedAtMs) > Number(existing.head.finishedAtMs)) {
+          const headDone: boolean = existing.head.state === TransferState.Completed;
+          const rDone: boolean = r.state === TransferState.Completed;
+          if ((!headDone && rDone) ||
+            ((headDone === rDone) && Number(r.finishedAtMs) > Number(existing.head.finishedAtMs))) {
             existing.head = r;
           }
         }
@@ -317,7 +329,7 @@ struct Cleanup {
   }
 
   /** 一次传输的目标文件集合：join(destDir, basename(source))。 */
-  private arrivalTargets(r: CompletedTransfer): string[] {
+  private arrivalTargets(r: TransferRecord): string[] {
     const dir: string = r.destDir.replace(/\/+$/, '');
     const out: string[] = [];
     for (const src of r.sources) {
@@ -339,8 +351,24 @@ struct Cleanup {
     return found;
   }
 
+  /** 信息行：成功 = 完整大小；失败/中断 = 「已写入 x / y · 中断」的残余语义。 */
+  private arrivalMeta(r: TransferRecord): string {
+    let sizePart: string;
+    if (r.state === TransferState.Completed) {
+      sizePart = formatBytes(Number(r.bytesTotal));
+    } else {
+      sizePart = `${formatBytes(Number(r.bytesDone))} / ${formatBytes(Number(r.bytesTotal))} · ${this.tt('cl.interrupted')}`;
+    }
+    let meta: string = `${sizePart} · ${this.tt('cl.atDir', this.arrivalDirLabel(r))}` +
+      ` · ${this.tt('cl.arrivedAt')} ${formatClock(Number(r.finishedAtMs))}`;
+    if (Number(r.filesTotal) > 1) {
+      meta += ` · ${Number(r.filesTotal)}${this.tt('cl.files')}`;
+    }
+    return meta;
+  }
+
   /** 条目标题：传的是文件(目录)就叫它自己的名字；多文件 = 首名 + 等 N 项。 */
-  private arrivalTitle(r: CompletedTransfer): string {
+  private arrivalTitle(r: TransferRecord): string {
     if (r.sources.length === 0) {
       return this.tt('cl.arrivals');
     }
@@ -352,7 +380,7 @@ struct Cleanup {
   }
 
   /** 所在目录的展示名：displayPath 裁掉应用沙箱前缀；取失败兜底 basename。 */
-  private arrivalDirLabel(r: CompletedTransfer): string {
+  private arrivalDirLabel(r: TransferRecord): string {
     if (this.core !== null) {
       try {
         let p: string = this.core.displayPath(r.destDir);
@@ -628,9 +656,7 @@ struct Cleanup {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
-        Text(`${formatBytes(Number(g.head.bytesTotal))} · ${this.tt('cl.atDir', this.arrivalDirLabel(g.head))}` +
-          ` · ${this.tt('cl.arrivedAt')} ${formatClock(Number(g.head.finishedAtMs))}` +
-          (Number(g.head.filesTotal) > 1 ? ` · ${Number(g.head.filesTotal)}${this.tt('cl.files')}` : ''))
+        Text(this.arrivalMeta(g.head))
           .fontSize(T_SECONDARY)
           .fontColor(this.th().onSurfaceVariant)
           .maxLines(1)

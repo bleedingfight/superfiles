@@ -788,11 +788,12 @@ impl Index {
         transfers::load_unfinished_transfers(&conn)
     }
 
-    /// Recently completed jobs, newest first — feeds the storage-cleanup
-    /// page listing what past transfers landed on this device.
-    pub fn load_recent_completed_transfers(&self, limit: u32) -> Result<Vec<StoredTransfer>> {
+    /// Recently terminal jobs, newest first — completed rows feed the
+    /// storage-cleanup page, and failed/cancelled rows surface the
+    /// partially-written leftovers a cleanup should reclaim.
+    pub fn load_recent_terminal_transfers(&self, limit: u32) -> Result<Vec<StoredTransfer>> {
         let conn = self.lock()?;
-        transfers::load_recent_completed_transfers(&conn, limit)
+        transfers::load_recent_terminal_transfers(&conn, limit)
     }
 
     /// Drop the record entirely (user dismissed it from the UI).

@@ -33,27 +33,6 @@ export interface Capabilities {
 }
 
 /**
- * A finished (completed) transfer as the storage-cleanup page sees it:
- * what landed where, how big, and when it finished.
- */
-export interface CompletedTransfer {
-  id: string;
-  /**
-   * Destination files = join(dest_dir, basename(source)); the cleanup
-   * page deletes exactly these when the user reclaims the space.
-   */
-  sources: Array<string>;
-  destDir: string;
-  isMove: boolean;
-  filesTotal: bigint;
-  bytesTotal: bigint;
-  /**
-   * Epoch ms of the terminal write (row updated_at).
-   */
-  finishedAtMs: bigint;
-}
-
-/**
  * A single filesystem entry as seen by the UI.
  */
 export interface Entry {
@@ -155,6 +134,38 @@ export interface ShareInfo {
   url: string;
   port: number;
   fileCount: number;
+}
+
+/**
+ * A terminal transfer as the storage-cleanup page sees it: what was being
+ * moved where, how much of it actually landed, and how it ended. Failed or
+ * cancelled jobs with a partial copy still own real bytes on disk — the
+ * cleanup page shows them so users can reclaim the leftovers.
+ */
+export interface TransferRecord {
+  id: string;
+  /**
+   * Destination files = join(dest_dir, basename(source)); the cleanup
+   * page deletes exactly these when the user reclaims the space.
+   */
+  sources: Array<string>;
+  destDir: string;
+  isMove: boolean;
+  filesTotal: bigint;
+  bytesTotal: bigint;
+  /**
+   * Bytes actually written before the job ended (== bytes_total on
+   * completion; the partial footprint on failure/cancel).
+   */
+  bytesDone: bigint;
+  /**
+   * Epoch ms of the terminal write (row updated_at).
+   */
+  finishedAtMs: bigint;
+  /**
+   * Terminal state of the job (completed / failed / cancelled).
+   */
+  state: TransferState;
 }
 
 /**
@@ -318,7 +329,6 @@ export declare class SuperFiles {
   capabilities(id: string): Capabilities;
   clearIndex(): void;
   clearIndexPrefix(prefix: string): bigint;
-  completedTransfers(limit: number): Array<CompletedTransfer>;
   compressZip(sources: Array<string>, destDir: string, name: string, method: ZipMethod, listener: ZipProgressListener): Entry;
   countByExts(exts: Array<string>, includeHidden: boolean): bigint;
   createDir(parent: string, name: string): Entry;
@@ -374,6 +384,7 @@ export declare class SuperFiles {
   stopLocalSend(): void;
   stopShare(): boolean;
   streamUrl(id: string): string;
+  transferRecords(limit: number): Array<TransferRecord>;
   transferSnapshot(id: string): TransferSnapshot | undefined;
   transfers(): Array<TransferSnapshot>;
   unmount(rootId: string): boolean;

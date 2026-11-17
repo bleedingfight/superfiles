@@ -1138,15 +1138,6 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
     func clearIndexPrefix(prefix: String) throws  -> UInt64
     
     /**
-     * Recently completed jobs, newest first — the storage-cleanup page
-     * lists what past transfers landed on this device so the user can
-     * reclaim space (delete actual destination files, then the row).
-     * Only jobs whose destination was this device's local root make
-     * sense for cleanup, so remote-dst jobs are filtered out there.
-     */
-    func completedTransfers(limit: UInt32) throws  -> [CompletedTransfer]
-    
-    /**
      * Zip `sources` (files or directories, walked recursively) into
      * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
      * auto-renamed away with a `-N` suffix). Streams through a bounded
@@ -1447,6 +1438,16 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
      */
     func streamUrl(id: String) throws  -> String
     
+    /**
+     * Recently terminal jobs (completed / failed / cancelled), newest first
+     * — the storage-cleanup page lists what past transfers put on this
+     * device, including the partial leftovers of failed jobs, so the user
+     * can reclaim space (delete actual destination files, then the rows).
+     * Only jobs whose destination was this device's local root make sense
+     * for cleanup, so remote-dst jobs are filtered out there.
+     */
+    func transferRecords(limit: UInt32) throws  -> [TransferRecord]
+    
     func transferSnapshot(id: String)  -> TransferSnapshot?
     
     func transfers()  -> [TransferSnapshot]
@@ -1585,23 +1586,6 @@ open func clearIndexPrefix(prefix: String)throws  -> UInt64  {
     uniffi_superfiles_fn_method_superfiles_clear_index_prefix(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(prefix),uniffiCallStatus
-    )
-})
-}
-    
-    /**
-     * Recently completed jobs, newest first — the storage-cleanup page
-     * lists what past transfers landed on this device so the user can
-     * reclaim space (delete actual destination files, then the row).
-     * Only jobs whose destination was this device's local root make
-     * sense for cleanup, so remote-dst jobs are filtered out there.
-     */
-open func completedTransfers(limit: UInt32)throws  -> [CompletedTransfer]  {
-    return try  FfiConverterSequenceTypeCompletedTransfer.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
-        uniffiCallStatus in
-    uniffi_superfiles_fn_method_superfiles_completed_transfers(
-            self.uniffiCloneHandle(),
-        FfiConverterUInt32.lower(limit),uniffiCallStatus
     )
 })
 }
@@ -2406,6 +2390,24 @@ open func streamUrl(id: String)throws  -> String  {
 })
 }
     
+    /**
+     * Recently terminal jobs (completed / failed / cancelled), newest first
+     * — the storage-cleanup page lists what past transfers put on this
+     * device, including the partial leftovers of failed jobs, so the user
+     * can reclaim space (delete actual destination files, then the rows).
+     * Only jobs whose destination was this device's local root make sense
+     * for cleanup, so remote-dst jobs are filtered out there.
+     */
+open func transferRecords(limit: UInt32)throws  -> [TransferRecord]  {
+    return try  FfiConverterSequenceTypeTransferRecord.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_transfer_records(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(limit),uniffiCallStatus
+    )
+})
+}
+    
 open func transferSnapshot(id: String) -> TransferSnapshot?  {
     return try!  FfiConverterOptionTypeTransferSnapshot.lift(try! rustCall() {
         uniffiCallStatus in
@@ -2876,98 +2878,6 @@ public func FfiConverterTypeCapabilities_lift(_ buf: RustBuffer) throws -> Capab
 #endif
 public func FfiConverterTypeCapabilities_lower(_ value: Capabilities) -> RustBuffer {
     return FfiConverterTypeCapabilities.lower(value)
-}
-
-
-/**
- * A finished (completed) transfer as the storage-cleanup page sees it:
- * what landed where, how big, and when it finished.
- */
-public struct CompletedTransfer: Equatable, Hashable {
-    public var id: String
-    /**
-     * Destination files = join(dest_dir, basename(source)); the cleanup
-     * page deletes exactly these when the user reclaims the space.
-     */
-    public var sources: [String]
-    public var destDir: String
-    public var isMove: Bool
-    public var filesTotal: UInt64
-    public var bytesTotal: UInt64
-    /**
-     * Epoch ms of the terminal write (row updated_at).
-     */
-    public var finishedAtMs: Int64
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(id: String, 
-        /**
-         * Destination files = join(dest_dir, basename(source)); the cleanup
-         * page deletes exactly these when the user reclaims the space.
-         */sources: [String], destDir: String, isMove: Bool, filesTotal: UInt64, bytesTotal: UInt64, 
-        /**
-         * Epoch ms of the terminal write (row updated_at).
-         */finishedAtMs: Int64) {
-        self.id = id
-        self.sources = sources
-        self.destDir = destDir
-        self.isMove = isMove
-        self.filesTotal = filesTotal
-        self.bytesTotal = bytesTotal
-        self.finishedAtMs = finishedAtMs
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension CompletedTransfer: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeCompletedTransfer: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CompletedTransfer {
-        return
-            try CompletedTransfer(
-                id: FfiConverterString.read(from: &buf), 
-                sources: FfiConverterSequenceString.read(from: &buf), 
-                destDir: FfiConverterString.read(from: &buf), 
-                isMove: FfiConverterBool.read(from: &buf), 
-                filesTotal: FfiConverterUInt64.read(from: &buf), 
-                bytesTotal: FfiConverterUInt64.read(from: &buf), 
-                finishedAtMs: FfiConverterInt64.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: CompletedTransfer, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.id, into: &buf)
-        FfiConverterSequenceString.write(value.sources, into: &buf)
-        FfiConverterString.write(value.destDir, into: &buf)
-        FfiConverterBool.write(value.isMove, into: &buf)
-        FfiConverterUInt64.write(value.filesTotal, into: &buf)
-        FfiConverterUInt64.write(value.bytesTotal, into: &buf)
-        FfiConverterInt64.write(value.finishedAtMs, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeCompletedTransfer_lift(_ buf: RustBuffer) throws -> CompletedTransfer {
-    return try FfiConverterTypeCompletedTransfer.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeCompletedTransfer_lower(_ value: CompletedTransfer) -> RustBuffer {
-    return FfiConverterTypeCompletedTransfer.lower(value)
 }
 
 
@@ -3604,6 +3514,122 @@ public func FfiConverterTypeShareInfo_lift(_ buf: RustBuffer) throws -> ShareInf
 #endif
 public func FfiConverterTypeShareInfo_lower(_ value: ShareInfo) -> RustBuffer {
     return FfiConverterTypeShareInfo.lower(value)
+}
+
+
+/**
+ * A terminal transfer as the storage-cleanup page sees it: what was being
+ * moved where, how much of it actually landed, and how it ended. Failed or
+ * cancelled jobs with a partial copy still own real bytes on disk — the
+ * cleanup page shows them so users can reclaim the leftovers.
+ */
+public struct TransferRecord: Equatable, Hashable {
+    public var id: String
+    /**
+     * Destination files = join(dest_dir, basename(source)); the cleanup
+     * page deletes exactly these when the user reclaims the space.
+     */
+    public var sources: [String]
+    public var destDir: String
+    public var isMove: Bool
+    public var filesTotal: UInt64
+    public var bytesTotal: UInt64
+    /**
+     * Bytes actually written before the job ended (== bytes_total on
+     * completion; the partial footprint on failure/cancel).
+     */
+    public var bytesDone: UInt64
+    /**
+     * Epoch ms of the terminal write (row updated_at).
+     */
+    public var finishedAtMs: Int64
+    /**
+     * Terminal state of the job (completed / failed / cancelled).
+     */
+    public var state: TransferState
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, 
+        /**
+         * Destination files = join(dest_dir, basename(source)); the cleanup
+         * page deletes exactly these when the user reclaims the space.
+         */sources: [String], destDir: String, isMove: Bool, filesTotal: UInt64, bytesTotal: UInt64, 
+        /**
+         * Bytes actually written before the job ended (== bytes_total on
+         * completion; the partial footprint on failure/cancel).
+         */bytesDone: UInt64, 
+        /**
+         * Epoch ms of the terminal write (row updated_at).
+         */finishedAtMs: Int64, 
+        /**
+         * Terminal state of the job (completed / failed / cancelled).
+         */state: TransferState) {
+        self.id = id
+        self.sources = sources
+        self.destDir = destDir
+        self.isMove = isMove
+        self.filesTotal = filesTotal
+        self.bytesTotal = bytesTotal
+        self.bytesDone = bytesDone
+        self.finishedAtMs = finishedAtMs
+        self.state = state
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TransferRecord: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTransferRecord: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TransferRecord {
+        return
+            try TransferRecord(
+                id: FfiConverterString.read(from: &buf), 
+                sources: FfiConverterSequenceString.read(from: &buf), 
+                destDir: FfiConverterString.read(from: &buf), 
+                isMove: FfiConverterBool.read(from: &buf), 
+                filesTotal: FfiConverterUInt64.read(from: &buf), 
+                bytesTotal: FfiConverterUInt64.read(from: &buf), 
+                bytesDone: FfiConverterUInt64.read(from: &buf), 
+                finishedAtMs: FfiConverterInt64.read(from: &buf), 
+                state: FfiConverterTypeTransferState.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TransferRecord, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterSequenceString.write(value.sources, into: &buf)
+        FfiConverterString.write(value.destDir, into: &buf)
+        FfiConverterBool.write(value.isMove, into: &buf)
+        FfiConverterUInt64.write(value.filesTotal, into: &buf)
+        FfiConverterUInt64.write(value.bytesTotal, into: &buf)
+        FfiConverterUInt64.write(value.bytesDone, into: &buf)
+        FfiConverterInt64.write(value.finishedAtMs, into: &buf)
+        FfiConverterTypeTransferState.write(value.state, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferRecord_lift(_ buf: RustBuffer) throws -> TransferRecord {
+    return try FfiConverterTypeTransferRecord.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferRecord_lower(_ value: TransferRecord) -> RustBuffer {
+    return FfiConverterTypeTransferRecord.lower(value)
 }
 
 
@@ -4313,31 +4339,6 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterSequenceTypeCompletedTransfer: FfiConverterRustBuffer {
-    typealias SwiftType = [CompletedTransfer]
-
-    public static func write(_ value: [CompletedTransfer], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeCompletedTransfer.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CompletedTransfer] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [CompletedTransfer]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeCompletedTransfer.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterSequenceTypeEntry: FfiConverterRustBuffer {
     typealias SwiftType = [Entry]
 
@@ -4488,6 +4489,31 @@ fileprivate struct FfiConverterSequenceTypeRecentOpen: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeTransferRecord: FfiConverterRustBuffer {
+    typealias SwiftType = [TransferRecord]
+
+    public static func write(_ value: [TransferRecord], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTransferRecord.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TransferRecord] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TransferRecord]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTransferRecord.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeTransferSnapshot: FfiConverterRustBuffer {
     typealias SwiftType = [TransferSnapshot]
 
@@ -4616,9 +4642,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_clear_index_prefix() != 57166) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_superfiles_checksum_method_superfiles_completed_transfers() != 23493) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_compress_zip() != 5552) {
@@ -4784,6 +4807,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_stream_url() != 9171) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_transfer_records() != 63167) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_transfer_snapshot() != 47685) {

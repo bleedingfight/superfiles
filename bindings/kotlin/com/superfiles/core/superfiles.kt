@@ -762,8 +762,6 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_clear_index_prefix(
     ): Int
-    external fun uniffi_superfiles_checksum_method_superfiles_completed_transfers(
-    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_compress_zip(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_count_by_exts(
@@ -874,6 +872,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_stream_url(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_transfer_records(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_transfer_snapshot(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_transfers(
@@ -958,8 +958,6 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_clear_index_prefix(`ptr`: Long,`prefix`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
-    external fun uniffi_superfiles_fn_method_superfiles_completed_transfers(`ptr`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_compress_zip(`ptr`: Long,`sources`: RustBuffer.ByValue,`destDir`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,`method`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_count_by_exts(`ptr`: Long,`exts`: RustBuffer.ByValue,`includeHidden`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -1069,6 +1067,8 @@ internal object UniffiLib {
     external fun uniffi_superfiles_fn_method_superfiles_stop_share(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
     external fun uniffi_superfiles_fn_method_superfiles_stream_url(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_transfer_records(`ptr`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_transfer_snapshot(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -1254,9 +1254,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_clear_index_prefix() and 0xFFFF) != 57166) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_superfiles_checksum_method_superfiles_completed_transfers() and 0xFFFF) != 23493) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_compress_zip() and 0xFFFF) != 5552) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1420,6 +1417,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_stream_url() and 0xFFFF) != 9171) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_transfer_records() and 0xFFFF) != 63167) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_transfer_snapshot() and 0xFFFF) != 47685) {
@@ -2766,15 +2766,6 @@ public interface SuperFilesInterface {
     fun `clearIndexPrefix`(`prefix`: kotlin.String): kotlin.ULong
     
     /**
-     * Recently completed jobs, newest first — the storage-cleanup page
-     * lists what past transfers landed on this device so the user can
-     * reclaim space (delete actual destination files, then the row).
-     * Only jobs whose destination was this device's local root make
-     * sense for cleanup, so remote-dst jobs are filtered out there.
-     */
-    fun `completedTransfers`(`limit`: kotlin.UInt): List<CompletedTransfer>
-    
-    /**
      * Zip `sources` (files or directories, walked recursively) into
      * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
      * auto-renamed away with a `-N` suffix). Streams through a bounded
@@ -3075,6 +3066,16 @@ public interface SuperFilesInterface {
      */
     fun `streamUrl`(`id`: kotlin.String): kotlin.String
     
+    /**
+     * Recently terminal jobs (completed / failed / cancelled), newest first
+     * — the storage-cleanup page lists what past transfers put on this
+     * device, including the partial leftovers of failed jobs, so the user
+     * can reclaim space (delete actual destination files, then the rows).
+     * Only jobs whose destination was this device's local root make sense
+     * for cleanup, so remote-dst jobs are filtered out there.
+     */
+    fun `transferRecords`(`limit`: kotlin.UInt): List<TransferRecord>
+    
     fun `transferSnapshot`(`id`: kotlin.String): TransferSnapshot?
     
     fun `transfers`(): List<TransferSnapshot>
@@ -3269,28 +3270,6 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
         it,
         
         FfiConverterString.lower(`prefix`),_status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Recently completed jobs, newest first — the storage-cleanup page
-     * lists what past transfers landed on this device so the user can
-     * reclaim space (delete actual destination files, then the row).
-     * Only jobs whose destination was this device's local root make
-     * sense for cleanup, so remote-dst jobs are filtered out there.
-     */
-    @Throws(SfException::class)override fun `completedTransfers`(`limit`: kotlin.UInt): List<CompletedTransfer> {
-            return FfiConverterSequenceTypeCompletedTransfer.lift(
-    callWithHandle {
-    uniffiRustCallWithError(SfException) { _status ->
-    UniffiLib.uniffi_superfiles_fn_method_superfiles_completed_transfers(
-        it,
-        
-        FfiConverterUInt.lower(`limit`),_status)
 }
     }
     )
@@ -4360,6 +4339,29 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
     }
     
 
+    
+    /**
+     * Recently terminal jobs (completed / failed / cancelled), newest first
+     * — the storage-cleanup page lists what past transfers put on this
+     * device, including the partial leftovers of failed jobs, so the user
+     * can reclaim space (delete actual destination files, then the rows).
+     * Only jobs whose destination was this device's local root make sense
+     * for cleanup, so remote-dst jobs are filtered out there.
+     */
+    @Throws(SfException::class)override fun `transferRecords`(`limit`: kotlin.UInt): List<TransferRecord> {
+            return FfiConverterSequenceTypeTransferRecord.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_transfer_records(
+        it,
+        
+        FfiConverterUInt.lower(`limit`),_status)
+}
+    }
+    )
+    }
+    
+
     override fun `transferSnapshot`(`id`: kotlin.String): TransferSnapshot? {
             return FfiConverterOptionalTypeTransferSnapshot.lift(
     callWithHandle {
@@ -4954,80 +4956,6 @@ public object FfiConverterTypeCapabilities: FfiConverterRustBuffer<Capabilities>
 
 
 /**
- * A finished (completed) transfer as the storage-cleanup page sees it:
- * what landed where, how big, and when it finished.
- */
-data class CompletedTransfer (
-    var `id`: kotlin.String
-    , 
-    /**
-     * Destination files = join(dest_dir, basename(source)); the cleanup
-     * page deletes exactly these when the user reclaims the space.
-     */
-    var `sources`: List<kotlin.String>
-    , 
-    var `destDir`: kotlin.String
-    , 
-    var `isMove`: kotlin.Boolean
-    , 
-    var `filesTotal`: kotlin.ULong
-    , 
-    var `bytesTotal`: kotlin.ULong
-    , 
-    /**
-     * Epoch ms of the terminal write (row updated_at).
-     */
-    var `finishedAtMs`: kotlin.Long
-    
-){
-    
-
-    
-
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeCompletedTransfer: FfiConverterRustBuffer<CompletedTransfer> {
-    override fun read(buf: ByteBuffer): CompletedTransfer {
-        return CompletedTransfer(
-            FfiConverterString.read(buf),
-            FfiConverterSequenceString.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterBoolean.read(buf),
-            FfiConverterULong.read(buf),
-            FfiConverterULong.read(buf),
-            FfiConverterLong.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: CompletedTransfer) = (
-            FfiConverterString.allocationSize(value.`id`) +
-            FfiConverterSequenceString.allocationSize(value.`sources`) +
-            FfiConverterString.allocationSize(value.`destDir`) +
-            FfiConverterBoolean.allocationSize(value.`isMove`) +
-            FfiConverterULong.allocationSize(value.`filesTotal`) +
-            FfiConverterULong.allocationSize(value.`bytesTotal`) +
-            FfiConverterLong.allocationSize(value.`finishedAtMs`)
-    )
-
-    override fun write(value: CompletedTransfer, buf: ByteBuffer) {
-            FfiConverterString.write(value.`id`, buf)
-            FfiConverterSequenceString.write(value.`sources`, buf)
-            FfiConverterString.write(value.`destDir`, buf)
-            FfiConverterBoolean.write(value.`isMove`, buf)
-            FfiConverterULong.write(value.`filesTotal`, buf)
-            FfiConverterULong.write(value.`bytesTotal`, buf)
-            FfiConverterLong.write(value.`finishedAtMs`, buf)
-    }
-}
-
-
-
-/**
  * A single filesystem entry as seen by the UI.
  */
 data class Entry (
@@ -5527,6 +5455,99 @@ public object FfiConverterTypeShareInfo: FfiConverterRustBuffer<ShareInfo> {
             FfiConverterString.write(value.`url`, buf)
             FfiConverterUShort.write(value.`port`, buf)
             FfiConverterUInt.write(value.`fileCount`, buf)
+    }
+}
+
+
+
+/**
+ * A terminal transfer as the storage-cleanup page sees it: what was being
+ * moved where, how much of it actually landed, and how it ended. Failed or
+ * cancelled jobs with a partial copy still own real bytes on disk — the
+ * cleanup page shows them so users can reclaim the leftovers.
+ */
+data class TransferRecord (
+    var `id`: kotlin.String
+    , 
+    /**
+     * Destination files = join(dest_dir, basename(source)); the cleanup
+     * page deletes exactly these when the user reclaims the space.
+     */
+    var `sources`: List<kotlin.String>
+    , 
+    var `destDir`: kotlin.String
+    , 
+    var `isMove`: kotlin.Boolean
+    , 
+    var `filesTotal`: kotlin.ULong
+    , 
+    var `bytesTotal`: kotlin.ULong
+    , 
+    /**
+     * Bytes actually written before the job ended (== bytes_total on
+     * completion; the partial footprint on failure/cancel).
+     */
+    var `bytesDone`: kotlin.ULong
+    , 
+    /**
+     * Epoch ms of the terminal write (row updated_at).
+     */
+    var `finishedAtMs`: kotlin.Long
+    , 
+    /**
+     * Terminal state of the job (completed / failed / cancelled).
+     */
+    var `state`: TransferState
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTransferRecord: FfiConverterRustBuffer<TransferRecord> {
+    override fun read(buf: ByteBuffer): TransferRecord {
+        return TransferRecord(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterTypeTransferState.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TransferRecord) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterSequenceString.allocationSize(value.`sources`) +
+            FfiConverterString.allocationSize(value.`destDir`) +
+            FfiConverterBoolean.allocationSize(value.`isMove`) +
+            FfiConverterULong.allocationSize(value.`filesTotal`) +
+            FfiConverterULong.allocationSize(value.`bytesTotal`) +
+            FfiConverterULong.allocationSize(value.`bytesDone`) +
+            FfiConverterLong.allocationSize(value.`finishedAtMs`) +
+            FfiConverterTypeTransferState.allocationSize(value.`state`)
+    )
+
+    override fun write(value: TransferRecord, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterSequenceString.write(value.`sources`, buf)
+            FfiConverterString.write(value.`destDir`, buf)
+            FfiConverterBoolean.write(value.`isMove`, buf)
+            FfiConverterULong.write(value.`filesTotal`, buf)
+            FfiConverterULong.write(value.`bytesTotal`, buf)
+            FfiConverterULong.write(value.`bytesDone`, buf)
+            FfiConverterLong.write(value.`finishedAtMs`, buf)
+            FfiConverterTypeTransferState.write(value.`state`, buf)
     }
 }
 
@@ -6155,34 +6176,6 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeCompletedTransfer: FfiConverterRustBuffer<List<CompletedTransfer>> {
-    override fun read(buf: ByteBuffer): List<CompletedTransfer> {
-        val len = buf.getInt()
-        return List<CompletedTransfer>(len) {
-            FfiConverterTypeCompletedTransfer.read(buf)
-        }
-    }
-
-    override fun allocationSize(value: List<CompletedTransfer>): ULong {
-        val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeCompletedTransfer.allocationSize(it) }.sum()
-        return sizeForLength + sizeForItems
-    }
-
-    override fun write(value: List<CompletedTransfer>, buf: ByteBuffer) {
-        buf.putInt(value.size)
-        value.iterator().forEach {
-            FfiConverterTypeCompletedTransfer.write(it, buf)
-        }
-    }
-}
-
-
-
-
-/**
- * @suppress
- */
 public object FfiConverterSequenceTypeEntry: FfiConverterRustBuffer<List<Entry>> {
     override fun read(buf: ByteBuffer): List<Entry> {
         val len = buf.getInt()
@@ -6341,6 +6334,34 @@ public object FfiConverterSequenceTypeRecentOpen: FfiConverterRustBuffer<List<Re
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeRecentOpen.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTransferRecord: FfiConverterRustBuffer<List<TransferRecord>> {
+    override fun read(buf: ByteBuffer): List<TransferRecord> {
+        val len = buf.getInt()
+        return List<TransferRecord>(len) {
+            FfiConverterTypeTransferRecord.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TransferRecord>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTransferRecord.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TransferRecord>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTransferRecord.write(it, buf)
         }
     }
 }

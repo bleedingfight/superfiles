@@ -1271,22 +1271,6 @@ pub fn uniffi_superfiles_fn_method_superfiles_clear_index_prefix(ptr: napi_ohos:
 
     Ok(u64_to_bigint(ffi_result))
 
-}#[napi(js_name = "uniffiSuperfilesFnMethodSuperfilesCompletedTransfers")]
-pub fn uniffi_superfiles_fn_method_superfiles_completed_transfers(ptr: napi_ohos::bindgen_prelude::BigInt, limit: i32) -> napi_ohos::Result<napi_ohos::bindgen_prelude::Uint8Array> {
-    unsafe extern "C" {
-        #[link_name = "uniffi_superfiles_fn_method_superfiles_completed_transfers"]
-        fn __arkts_ffi(ptr: u64, limit: u32, call_status: &mut RustCallStatus) -> RustBuffer;
-    }
-    let ptr_ffi = bigint_to_u64(ptr, "ptr")?;    let limit_ffi = limit as u32;
-
-    let mut call_status = RustCallStatus::default();
-
-    let ffi_result = unsafe { __arkts_ffi(ptr_ffi, limit_ffi, &mut call_status) };
-
-    check_call_status(&mut call_status)?;
-
-    Ok(napi_ohos::bindgen_prelude::Uint8Array::from(ffi_result.destroy_into_vec()))
-
 }#[napi(js_name = "uniffiSuperfilesFnMethodSuperfilesCompressZip")]
 pub fn uniffi_superfiles_fn_method_superfiles_compress_zip(ptr: napi_ohos::bindgen_prelude::BigInt, sources: napi_ohos::bindgen_prelude::Uint8Array, dest_dir: napi_ohos::bindgen_prelude::Uint8Array, name: napi_ohos::bindgen_prelude::Uint8Array, method: napi_ohos::bindgen_prelude::Uint8Array, listener: napi_ohos::bindgen_prelude::BigInt) -> napi_ohos::Result<napi_ohos::bindgen_prelude::Uint8Array> {
     unsafe extern "C" {
@@ -2176,6 +2160,22 @@ pub fn uniffi_superfiles_fn_method_superfiles_stream_url(ptr: napi_ohos::bindgen
     let mut call_status = RustCallStatus::default();
 
     let ffi_result = unsafe { __arkts_ffi(ptr_ffi, id_ffi, &mut call_status) };
+
+    check_call_status(&mut call_status)?;
+
+    Ok(napi_ohos::bindgen_prelude::Uint8Array::from(ffi_result.destroy_into_vec()))
+
+}#[napi(js_name = "uniffiSuperfilesFnMethodSuperfilesTransferRecords")]
+pub fn uniffi_superfiles_fn_method_superfiles_transfer_records(ptr: napi_ohos::bindgen_prelude::BigInt, limit: i32) -> napi_ohos::Result<napi_ohos::bindgen_prelude::Uint8Array> {
+    unsafe extern "C" {
+        #[link_name = "uniffi_superfiles_fn_method_superfiles_transfer_records"]
+        fn __arkts_ffi(ptr: u64, limit: u32, call_status: &mut RustCallStatus) -> RustBuffer;
+    }
+    let ptr_ffi = bigint_to_u64(ptr, "ptr")?;    let limit_ffi = limit as u32;
+
+    let mut call_status = RustCallStatus::default();
+
+    let ffi_result = unsafe { __arkts_ffi(ptr_ffi, limit_ffi, &mut call_status) };
 
     check_call_status(&mut call_status)?;
 

@@ -398,11 +398,6 @@ void uniffi_superfiles_fn_method_superfiles_clear_index(uint64_t ptr, RustCallSt
 uint64_t uniffi_superfiles_fn_method_superfiles_clear_index_prefix(uint64_t ptr, RustBuffer prefix, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_COMPLETED_TRANSFERS
-#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_COMPLETED_TRANSFERS
-RustBuffer uniffi_superfiles_fn_method_superfiles_completed_transfers(uint64_t ptr, uint32_t limit, RustCallStatus *_Nonnull out_status
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_COMPRESS_ZIP
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_COMPRESS_ZIP
 RustBuffer uniffi_superfiles_fn_method_superfiles_compress_zip(uint64_t ptr, RustBuffer sources, RustBuffer dest_dir, RustBuffer name, RustBuffer method, uint64_t listener, RustCallStatus *_Nonnull out_status
@@ -676,6 +671,11 @@ int8_t uniffi_superfiles_fn_method_superfiles_stop_share(uint64_t ptr, RustCallS
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_STREAM_URL
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_STREAM_URL
 RustBuffer uniffi_superfiles_fn_method_superfiles_stream_url(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_TRANSFER_RECORDS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_TRANSFER_RECORDS
+RustBuffer uniffi_superfiles_fn_method_superfiles_transfer_records(uint64_t ptr, uint32_t limit, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_FN_METHOD_SUPERFILES_TRANSFER_SNAPSHOT
@@ -1078,12 +1078,6 @@ uint16_t uniffi_superfiles_checksum_method_superfiles_clear_index_prefix(void
     
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_COMPLETED_TRANSFERS
-#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_COMPLETED_TRANSFERS
-uint16_t uniffi_superfiles_checksum_method_superfiles_completed_transfers(void
-    
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_COMPRESS_ZIP
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_COMPRESS_ZIP
 uint16_t uniffi_superfiles_checksum_method_superfiles_compress_zip(void
@@ -1411,6 +1405,12 @@ uint16_t uniffi_superfiles_checksum_method_superfiles_stop_share(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_STREAM_URL
 #define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_STREAM_URL
 uint16_t uniffi_superfiles_checksum_method_superfiles_stream_url(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_TRANSFER_RECORDS
+#define UNIFFI_FFIDEF_UNIFFI_SUPERFILES_CHECKSUM_METHOD_SUPERFILES_TRANSFER_RECORDS
+uint16_t uniffi_superfiles_checksum_method_superfiles_transfer_records(void
     
 );
 #endif
