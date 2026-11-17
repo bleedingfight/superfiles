@@ -108,7 +108,7 @@ fun FavoritesScreen(viewModel: VfsViewModel, onOpenDirectory: () -> Unit = {}) {
                                 viewModel.openEntry(fav.entry)
                                 onOpenDirectory() // 目录导航发生在文件 Tab，切过去才看得见
                             } else {
-                                openEntryFile(context, viewModel, fav.entry, chooser = false)
+                                openEntryPrimary(context, viewModel, fav.entry)
                             }
                         },
                         trailing = {

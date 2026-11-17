@@ -20,6 +20,7 @@
     <uses-permission android:name="android.permission.GET_ACCOUNTS" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!--
       仅供售后/联调定位问题：授予需 `adb shell pm grant <pkg> android.permission.READ_LOGS`，
@@ -81,6 +82,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="superfiles" android:host="oauth" android:path="/callback" />
+            </intent-filter>
+            <!-- LocalSend 一键组网深链：superfiles://localsend?ip=..&port=..&fp=.. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="superfiles" android:host="localsend" />
             </intent-filter>
         </activity>
 

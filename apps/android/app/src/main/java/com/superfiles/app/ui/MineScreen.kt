@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Info
@@ -43,7 +44,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -57,40 +57,24 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.superfiles.app.VfsViewModel
-import java.text.DateFormat
-import java.util.Date
-import java.util.Locale
-
-private data class IndexInfo(val count: Long, val bytes: Long, val lastScanMs: Long?)
 
 /**
  * 「我的」：设置 + 状态中心。每个设置项 = 独立圆角卡：
  * 左侧浅灰圆角方块装图标，右侧为标题/副标题/操作区；不再使用分割线。
  */
 @Composable
-fun MineScreen(viewModel: VfsViewModel, onOpenTransfers: () -> Unit, onOpenLocalSend: () -> Unit = {}) {
+fun MineScreen(
+    viewModel: VfsViewModel,
+    onOpenTransfers: () -> Unit,
+    onOpenLocalSend: () -> Unit = {},
+    onOpenStorageCleanup: () -> Unit = {},
+    onOpenIndexManage: () -> Unit = {},
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var showClearConfirm by remember { mutableStateOf(false) }
-    var showRebuildConfirm by remember { mutableStateOf(false) }
     var showLicenses by remember { mutableStateOf(false) }
     var showEditProfile by remember { mutableStateOf(false) }
 
-    val indexInfo by produceState(
-        initialValue = IndexInfo(0, 0, null),
-        state.scanDone,
-        state.indexedCount,
-    ) {
-        // Blocking SQLite/filesystem work must stay off the main thread:
-        // otherwise every switch to the "我的" tab pays it as a frame hitch.
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            IndexInfo(
-                viewModel.indexEntryCount(),
-                viewModel.indexFileBytes(),
-                viewModel.lastScanAt(),
-            )
-        }
-    }
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         LazyColumn(
@@ -120,29 +104,19 @@ fun MineScreen(viewModel: VfsViewModel, onOpenTransfers: () -> Unit, onOpenLocal
             item { MineSection(L10n.t(R.string.s_316ddc8bcb)) }
             item {
                 SettingRow(
+                    icon = Icons.Outlined.DeleteSweep,
+                    title = L10n.t(R.string.s_b699a4247a),
+                    onClick = onOpenStorageCleanup,
+                    chevron = true,
+                )
+            }
+            item {
+                SettingRow(
                     icon = Icons.Outlined.Storage,
-                    title = L10n.t(R.string.s_571a173952),
-                    subtitle = L10n.t(R.string.s_5f0d391a87, (indexInfo.count), (formatSize(indexInfo.bytes))),
-                    trailing = indexInfo.lastScanMs?.let { ms ->
-                        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT, Locale.getDefault())
-                            .format(Date(ms))
-                    },
-                )
-            }
-            item {
-                SettingRow(
-                    icon = Icons.Outlined.CloudUpload,
-                    title = L10n.t(R.string.s_de06163276),
-                    subtitle = L10n.t(R.string.s_1324e3ecf2),
-                    onClick = { showRebuildConfirm = true },
-                )
-            }
-            item {
-                SettingRow(
-                    icon = Icons.Outlined.Description,
-                    title = L10n.t(R.string.s_c748e907ae),
-                    subtitle = L10n.t(R.string.s_ca161711cc),
-                    onClick = { showClearConfirm = true },
+                    title = L10n.t(R.string.s_index_manage_title),
+                    subtitle = L10n.t(R.string.s_index_manage_hint),
+                    onClick = onOpenIndexManage,
+                    chevron = true,
                 )
             }
             item {
@@ -182,7 +156,8 @@ fun MineScreen(viewModel: VfsViewModel, onOpenTransfers: () -> Unit, onOpenLocal
                 val active = state.transfers.count {
                     it.id !in state.foregroundTransfers && (
                         it.state == com.superfiles.core.TransferState.QUEUED ||
-                            it.state == com.superfiles.core.TransferState.RUNNING
+                            it.state == com.superfiles.core.TransferState.RUNNING ||
+                            it.state == com.superfiles.core.TransferState.PAUSED
                         )
                 }
                 SettingRow(
@@ -257,32 +232,6 @@ fun MineScreen(viewModel: VfsViewModel, onOpenTransfers: () -> Unit, onOpenLocal
 
             item { Spacer(Modifier.height(Dimens.Space8)) }
         }
-    }
-
-    if (showRebuildConfirm) {
-        DangerConfirmDialog(
-            title = L10n.t(R.string.s_be0ade04f3),
-            message = L10n.t(R.string.s_99c230de22),
-            confirmLabel = L10n.t(R.string.s_9e09315960),
-            onConfirm = {
-                showRebuildConfirm = false
-                viewModel.indexEverything()
-            },
-            onCancel = { showRebuildConfirm = false },
-        )
-    }
-
-    if (showClearConfirm) {
-        DangerConfirmDialog(
-            title = L10n.t(R.string.s_c748e907ae),
-            message = L10n.t(R.string.s_40b0bfcd56),
-            confirmLabel = L10n.t(R.string.s_288f0c404c),
-            onConfirm = {
-                showClearConfirm = false
-                viewModel.clearIndex()
-            },
-            onCancel = { showClearConfirm = false },
-        )
     }
 
     if (showEditProfile) {
@@ -372,14 +321,6 @@ private fun SettingRow(
                 trailingContent != null -> trailingContent()
                 trailing != null -> Text(trailing, fontSize = 12.sp, color = SfColors.OnSurfaceVariant)
             }
-            if (chevron && onClick != null) {
-                Icon(
-                    Icons.Outlined.ChevronRight,
-                    contentDescription = null,
-                    modifier = Modifier.size(Dimens.Space4),
-                    tint = SfColors.Outline,
-                )
-            }
         }
     }
 }
@@ -417,12 +358,6 @@ private fun UserProfileCard(nickname: String, avatarChar: String, onClick: () ->
                 Text(nickname, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = SfColors.OnSurface)
                 Text(L10n.t(R.string.s_ec9b0f49d2), fontSize = 11.sp, color = SfColors.OnSurfaceVariant)
             }
-            Icon(
-                Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                modifier = Modifier.size(Dimens.Space4),
-                tint = SfColors.Outline,
-            )
         }
     }
 }

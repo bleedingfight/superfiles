@@ -5,9 +5,11 @@ import com.superfiles.app.R
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -40,10 +42,19 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.zIndex
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Alignment
@@ -56,6 +67,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.superfiles.app.NetworkMountConfig
 import com.superfiles.app.NetworkMountStatus
@@ -67,13 +79,6 @@ import com.superfiles.app.VfsViewModel
  * 连接成功后点击条目直接进入浏览（挂载在 appCore，重启自动重连）。
  */
 /** 各协议对应的描边图标（WebDAV=云、SMB=局域网、SFTP=终端）。 */
-internal fun networkProtocolIcon(protocol: String): ImageVector = when (protocol.lowercase()) {
-    "webdav" -> Icons.Outlined.Cloud
-    "smb" -> Icons.Outlined.Lan
-    "sftp" -> Icons.Outlined.Terminal
-    else -> Icons.Outlined.Cloud
-}
-
 private enum class NetProtocol(
     val key: String,
     val label: String,
@@ -84,6 +89,7 @@ private enum class NetProtocol(
     Webdav("webdav", "WebDAV", Icons.Outlined.Cloud, null, "https://host/dav"),
     Sftp("sftp", "SFTP", Icons.Outlined.Terminal, R.string.s_9d2cff41c3),
     Smb("smb", "Samba (SMB)", Icons.Outlined.Lan, R.string.s_910ece51a1),
+    S3("s3", "S3", Icons.Outlined.CloudQueue, null, "https://s3.amazonaws.com"),
 }
 
 private fun NetProtocol.hintText(): String =
@@ -95,10 +101,18 @@ fun NetworkSheet(
     viewModel: VfsViewModel,
     onDismiss: () -> Unit,
     onBrowse: (NetworkMountStatus) -> Unit,
+    /** 非空时直接进入编辑表单（首页长按「编辑连接」）。 */
+    initialEdit: NetworkMountStatus? = null,
+    /** 调试用：直接打开云盘列表。 */
+    startInCloud: Boolean = false,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var mode by remember { mutableStateOf<NetMode>(NetMode.List) }
-    var renameTarget by remember { mutableStateOf<NetworkMountStatus?>(null) }
+    var mode by remember {
+        mutableStateOf<NetMode>(
+            initialEdit?.let { NetMode.Form(protoOf(it.config.protocol), editing = it) }
+                ?: if (startInCloud) NetMode.CloudProviders else NetMode.List,
+        )
+    }
     var deleteTarget by remember { mutableStateOf<NetworkMountStatus?>(null) }
 
     ModalBottomSheet(
@@ -155,7 +169,9 @@ fun NetworkSheet(
                                     MountRow(
                                         mount = mount,
                                         onOpen = { onBrowse(mount) },
-                                        onRename = { renameTarget = mount },
+                                        onEdit = {
+                                            mode = NetMode.Form(protoOf(mount.config.protocol), editing = mount)
+                                        },
                                         onDelete = { deleteTarget = mount },
                                     )
                                 }
@@ -163,7 +179,6 @@ fun NetworkSheet(
                         }
                     }
                     HorizontalDivider(modifier = Modifier.padding(vertical = Dimens.Space2))
-                    DisabledProtoRow(L10n.t(R.string.s_3d44ca5326), L10n.t(R.string.s_8037ed0c37))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -200,54 +215,126 @@ fun NetworkSheet(
                             }
                         }
                     }
-                    DisabledProtoRow(L10n.t(R.string.s_3d44ca5326), L10n.t(R.string.s_8037ed0c37))
-                    DisabledProtoRow(L10n.t(R.string.s_681f0e8555), L10n.t(R.string.s_8037ed0c37))
                 }
 
                 NetMode.CloudProviders -> {
                     val context = LocalContext.current
+                    val haptics = LocalHapticFeedback.current
+                    val density = LocalDensity.current
+                    var providers by remember {
+                        mutableStateOf(
+                            com.superfiles.app.cloud.CloudOrder.ordered(
+                                context,
+                                com.superfiles.app.cloud.CloudProviders.all,
+                            ),
+                        )
+                    }
                     var hintFor by remember { mutableStateOf<String?>(null) }
+                    val heights = remember { mutableStateMapOf<Int, Float>() }
+                    var dragging by remember { mutableStateOf(-1) }
+                    var dragOffset by remember { mutableStateOf(0f) }
+
                     SheetHeader(title = L10n.t(R.string.s_6c0912e5bb), onBack = { mode = NetMode.List })
-                    com.superfiles.app.cloud.CloudProviders.all.forEach { provider ->
+                    providers.forEachIndexed { index, provider ->
                         val configured = provider.configured
                         val authed = com.superfiles.app.cloud.CloudAuthManager.hasToken(context, provider.id)
-                        Row(
+                        val isDragging = index == dragging
+                        val currentIndex by rememberUpdatedState(index)
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 56.dp)
-                                .clickable {
-                                    if (configured) {
-                                        com.superfiles.app.cloud.CloudAuthManager.startAuth(context, provider)
-                                    } else {
-                                        hintFor = if (hintFor == provider.id) null else provider.id
+                                .zIndex(if (isDragging) 1f else 0f)
+                                .graphicsLayer {
+                                    translationY = if (isDragging) dragOffset else 0f
+                                    shadowElevation = if (isDragging) 6f else 0f
+                                }
+                                .onGloballyPositioned { coords ->
+                                    heights[index] = coords.size.height.toFloat()
+                                }
+                                .pointerInput(provider.id) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = {
+                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            dragging = currentIndex
+                                            dragOffset = 0f
+                                        },
+                                        onDrag = { change, amount ->
+                                            change.consume()
+                                            dragOffset += amount.y
+                                        },
+                                        onDragEnd = {
+                                            val from = currentIndex
+                                            val h = heights[from]?.takeIf { it > 0f }
+                                                ?: with(density) { 56.dp.toPx() }
+                                            val shift = (dragOffset / h).roundToInt()
+                                            val target = (from + shift)
+                                                .coerceIn(0, providers.lastIndex)
+                                            if (target != from) {
+                                                val list = providers.toMutableList()
+                                                val item = list.removeAt(from)
+                                                list.add(target, item)
+                                                providers = list
+                                                com.superfiles.app.cloud.CloudOrder.save(context, list)
+                                                heights.clear()
+                                            }
+                                            dragging = -1
+                                            dragOffset = 0f
+                                        },
+                                        onDragCancel = {
+                                            dragging = -1
+                                            dragOffset = 0f
+                                        },
+                                    )
+                                },
+                        ) {
+                            Column {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 56.dp)
+                                        .clickable {
+                                            if (configured) {
+                                                com.superfiles.app.cloud.CloudAuthManager
+                                                    .startAuth(context, provider)
+                                            } else {
+                                                hintFor = if (hintFor == provider.id) null else provider.id
+                                            }
+                                        }
+                                        .padding(horizontal = Dimens.Space6),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(Dimens.Space4),
+                                ) {
+                                    CloudProviderLogo(provider.id)
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            L10n.t(provider.displayNameRes),
+                                            fontSize = 14.sp,
+                                            color = SfColors.OnSurface,
+                                        )
+                                        Text(
+                                            when {
+                                                !configured -> L10n.t(R.string.s_8613606e5d)
+                                                authed -> L10n.t(R.string.s_812545f64c)
+                                                else -> L10n.t(R.string.s_13df49d82b)
+                                            },
+                                            fontSize = 11.sp,
+                                            color = if (authed) SfColors.Success else SfColors.OnSurfaceVariant,
+                                        )
                                     }
                                 }
-                                .padding(horizontal = Dimens.Space6),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(Dimens.Space4),
-                        ) {
-                            Icon(Icons.Outlined.Cloud, contentDescription = null, tint = SfColors.Primary)
-                            Column(Modifier.weight(1f)) {
-                                Text(L10n.t(provider.displayNameRes), fontSize = 14.sp, color = SfColors.OnSurface)
-                                Text(
-                                    when {
-                                        !configured -> L10n.t(R.string.s_8613606e5d)
-                                        authed -> L10n.t(R.string.s_812545f64c)
-                                        else -> L10n.t(R.string.s_13df49d82b)
-                                    },
-                                    fontSize = 11.sp,
-                                    color = if (authed) SfColors.Success else SfColors.OnSurfaceVariant,
-                                )
+                                if (hintFor == provider.id) {
+                                    Text(
+                                        L10n.t(R.string.s_92e56dfe6a) +
+                                            L10n.t(R.string.s_3a5af9d0d8),
+                                        fontSize = 11.sp,
+                                        color = SfColors.OnSurfaceVariant,
+                                        modifier = Modifier.padding(
+                                            horizontal = Dimens.Space6,
+                                            vertical = Dimens.Space1,
+                                        ),
+                                    )
+                                }
                             }
-                        }
-                        if (hintFor == provider.id) {
-                            Text(
-                                L10n.t(R.string.s_92e56dfe6a) +
-                                    L10n.t(R.string.s_3a5af9d0d8),
-                                fontSize = 11.sp,
-                                color = SfColors.OnSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = Dimens.Space6, vertical = Dimens.Space1),
-                            )
                         }
                     }
                     Text(
@@ -260,36 +347,38 @@ fun NetworkSheet(
 
                 is NetMode.Form -> {
                     val proto = m.protocol
-                    SheetHeader(title = L10n.t(R.string.s_373869b558, (proto.label)), onBack = { mode = NetMode.List })
+                    SheetHeader(
+                        title = if (m.editing == null) {
+                            L10n.t(R.string.s_373869b558, (proto.label))
+                        } else {
+                            L10n.t(R.string.s_6175e09bb1)
+                        },
+                        onBack = { mode = NetMode.List },
+                    )
                     ConnectForm(
                         proto = proto,
+                        editing = m.editing,
                         prefillHost = m.host,
                         prefillShare = m.share,
                         onScanLanSmb = viewModel::scanLanSmb,
                         rememberedShare = viewModel::lastShareFor,
                         onListShares = viewModel::listSmbShares,
                         onSubmit = { cfg, done ->
-                            viewModel.addNetworkMount(cfg, onResult = { ok, err ->
+                            val editing = m.editing
+                            val handler: (Boolean, String?) -> Unit = { ok, err ->
                                 done(ok, err)
                                 if (ok) mode = NetMode.List
-                            })
+                            }
+                            if (editing == null) {
+                                viewModel.addNetworkMount(cfg, onResult = handler)
+                            } else {
+                                viewModel.updateNetworkMount(editing, cfg, onResult = handler)
+                            }
                         },
                     )
                 }
             }
         }
-    }
-
-    // 重命名弹窗（所有协议通用；改完自动以新名字重挂载）
-    renameTarget?.let { mount ->
-        RenameMountDialog(
-            mount = mount,
-            onDismiss = { renameTarget = null },
-            onConfirm = { newName ->
-                renameTarget = null
-                viewModel.renameMount(mount, newName)
-            },
-        )
     }
 
     // 移除确认（与首页长按/左滑删除同一套确认框）
@@ -307,45 +396,20 @@ fun NetworkSheet(
     }
 }
 
-@Composable
-private fun RenameMountDialog(
-    mount: NetworkMountStatus,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
-) {
-    var name by remember(mount.config.name) { mutableStateOf(mount.config.name) }
-    SfDialog(
-        onDismissRequest = onDismiss,
-        title = L10n.t(R.string.s_6e265b1c64),
-        actions = {
-            SafeCancelButton(onClick = onDismiss)
-            PrimaryConfirmButton(
-                L10n.t(R.string.s_be5fbbe34c),
-                enabled = name.isNotBlank() && name != mount.config.name,
-            ) { onConfirm(name) }
-        },
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(Dimens.Space2)) {
-            Text(
-                "${mount.config.protocol.uppercase()} · ${mount.config.host}",
-                fontSize = 11.sp,
-                color = SfColors.OnSurfaceVariant,
-            )
-            SfInputField(
-                value = name,
-                onValueChange = { name = it },
-                placeholder = L10n.t(R.string.s_b688bff46b),
-                onDone = { if (name.isNotBlank()) onConfirm(name) },
-            )
-        }
-    }
-}
+private fun protoOf(key: String): NetProtocol =
+    NetProtocol.entries.firstOrNull { it.key == key } ?: NetProtocol.Webdav
 
 private sealed interface NetMode {
     data object List : NetMode
     data object ChooseProtocol : NetMode
     data object CloudProviders : NetMode
-    data class Form(val protocol: NetProtocol, val host: String = "", val share: String = "") : NetMode
+    data class Form(
+        val protocol: NetProtocol,
+        val host: String = "",
+        val share: String = "",
+        /** 非空 = 编辑已保存连接（字段全部预填）。 */
+        val editing: NetworkMountStatus? = null,
+    ) : NetMode
 }
 
 @Composable
@@ -378,7 +442,7 @@ private fun SheetHeader(title: String, onBack: (() -> Unit)?, actions: @Composab
 private fun MountRow(
     mount: NetworkMountStatus,
     onOpen: () -> Unit,
-    onRename: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val online = mount.rootId != null
@@ -391,7 +455,7 @@ private fun MountRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Dimens.Space3),
     ) {
-        Icon(networkProtocolIcon(mount.config.protocol), contentDescription = null, tint = SfColors.Primary)
+        StorageProtoLogo(mount.config.protocol)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 mount.config.name,
@@ -418,33 +482,17 @@ private fun MountRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            CompactIconButton(Icons.Outlined.Edit, L10n.t(R.string.s_c8ce4b36cb), onClick = onRename)
+            CompactIconButton(Icons.Outlined.Edit, L10n.t(R.string.s_74f03bafc8), onClick = onEdit)
             CompactIconButton(Icons.Outlined.Delete, L10n.t(R.string.s_86048b4fea), tint = SfColors.Error, onClick = onDelete)
         }
     }
 }
 
-@Composable
-private fun DisabledProtoRow(label: String, hint: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .padding(horizontal = Dimens.Space6),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Dimens.Space4),
-    ) {
-        Icon(Icons.Outlined.CloudQueue, contentDescription = null, tint = SfColors.Outline.copy(alpha = 0.6f))
-        Column(Modifier.weight(1f)) {
-            Text(label, fontSize = 14.sp, color = SfColors.Outline)
-            Text(hint, fontSize = 11.sp, color = SfColors.Outline)
-        }
-    }
-}
 
 @Composable
 private fun ConnectForm(
     proto: NetProtocol,
+    editing: NetworkMountStatus? = null,
     prefillHost: String = "",
     prefillShare: String = "",
     onScanLanSmb: ((onDone: (List<SmbHostInfo>?, String?) -> Unit) -> Unit) = {},
@@ -458,20 +506,36 @@ private fun ConnectForm(
     ) -> Unit,
     onSubmit: (NetworkMountConfig, (Boolean, String?) -> Unit) -> Unit,
 ) {
-    var name by remember(proto) { mutableStateOf(defaultName(proto)) }
-    var host by remember(proto) { mutableStateOf(prefillHost) }
-    var port by remember(proto) {
+    var name by remember(proto, editing) {
+        mutableStateOf(editing?.config?.name ?: defaultName(proto))
+    }
+    var host by remember(proto, editing) {
+        mutableStateOf(editing?.config?.host ?: prefillHost)
+    }
+    var port by remember(proto, editing) {
         mutableStateOf(
-            when (proto) {
+            editing?.config?.port?.takeIf { it > 0 }?.toString() ?: when (proto) {
                 NetProtocol.Sftp -> "22"
                 NetProtocol.Smb -> "445" // 支持自定义端口（如 1445）
                 else -> ""
             },
         )
     }
-    var share by remember(proto) { mutableStateOf(prefillShare) }
-    var username by remember(proto) { mutableStateOf("") }
-    var password by remember(proto) { mutableStateOf("") }
+    var share by remember(proto, editing) {
+        mutableStateOf(editing?.config?.share ?: prefillShare)
+    }
+    var username by remember(proto, editing) {
+        mutableStateOf(editing?.config?.username ?: "")
+    }
+    var password by remember(proto, editing) {
+        mutableStateOf(editing?.config?.password ?: "")
+    }
+    var region by remember(proto, editing) {
+        mutableStateOf(editing?.config?.region ?: "us-east-1")
+    }
+    var pathStyle by remember(proto, editing) {
+        mutableStateOf(editing?.config?.pathStyle ?: false)
+    }
     var submitting by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var listingShares by remember { mutableStateOf(false) }
@@ -494,7 +558,8 @@ private fun ConnectForm(
     }
 
     val valid = host.isNotBlank() && name.isNotBlank() &&
-        (proto != NetProtocol.Smb || share.isNotBlank())
+        (proto != NetProtocol.Smb || share.isNotBlank()) &&
+        (proto != NetProtocol.S3 || (share.isNotBlank() && username.isNotBlank() && password.isNotBlank()))
 
     Column(
         modifier = Modifier.padding(horizontal = Dimens.Space6),
@@ -534,16 +599,24 @@ private fun ConnectForm(
                                 tint = SfColors.Primary,
                             )
                             Spacer(Modifier.width(Dimens.Space2))
-                            Text(
-                                if (info.shares.isEmpty()) {
-                                    L10n.t(R.string.s_d6fa94966b, (info.host))
-                                } else {
-                                    "${info.host} · ${info.shares.joinToString("、")}"
-                                },
-                                fontSize = 12.sp,
-                                color = SfColors.OnSurface,
-                                maxLines = 1,
-                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    info.name,
+                                    fontSize = 12.sp,
+                                    color = SfColors.OnSurface,
+                                    maxLines = 1,
+                                )
+                                Text(
+                                    if (info.shares.isEmpty()) {
+                                        L10n.t(R.string.s_d6fa94966b, (info.host))
+                                    } else {
+                                        "${info.host} · ${info.shares.joinToString("、")}"
+                                    },
+                                    fontSize = 10.sp,
+                                    color = SfColors.OnSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
                         }
                     }
                 }
@@ -556,6 +629,23 @@ private fun ConnectForm(
             NetProtocol.Sftp -> {
                 FormField(L10n.t(R.string.s_652273694e), host, "192.168.1.10") { host = it }
                 FormField(L10n.t(R.string.s_c76cfefe72), port, "22", KeyboardType.Number) { port = it }
+            }
+            NetProtocol.S3 -> {
+                FormField(L10n.t(R.string.s_s3_endpoint), host, "https://s3.amazonaws.com") { host = it }
+                FormField(L10n.t(R.string.s_s3_bucket), share, "my-bucket") { share = it }
+                FormField(L10n.t(R.string.s_s3_region), region, "us-east-1") { region = it }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        L10n.t(R.string.s_s3_pathstyle),
+                        fontSize = 12.sp,
+                        color = SfColors.OnSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    SfSwitch(checked = pathStyle, onCheckedChange = { pathStyle = it })
+                }
             }
             NetProtocol.Smb -> {
                 FormField(L10n.t(R.string.s_652273694e), host, "192.168.1.10") { host = it }
@@ -632,8 +722,17 @@ private fun ConnectForm(
                 }
             }
         }
-        FormField(L10n.t(R.string.s_819767ada1), username, L10n.t(R.string.s_4192bed6b0)) { username = it }
-        FormField(L10n.t(R.string.s_a810520460), password, L10n.t(R.string.s_4192bed6b0), isPassword = true) { password = it }
+        FormField(
+            if (proto == NetProtocol.S3) L10n.t(R.string.s_s3_access) else L10n.t(R.string.s_819767ada1),
+            username,
+            L10n.t(R.string.s_4192bed6b0),
+        ) { username = it }
+        FormField(
+            if (proto == NetProtocol.S3) L10n.t(R.string.s_s3_secret) else L10n.t(R.string.s_a810520460),
+            password,
+            L10n.t(R.string.s_4192bed6b0),
+            isPassword = true,
+        ) { password = it }
         errorText?.let {
             Text(
                 it,
@@ -660,6 +759,8 @@ private fun ConnectForm(
                             share = share.trim(),
                             username = username,
                             password = password,
+                            region = region.trim(),
+                            pathStyle = pathStyle,
                         ),
                     ) { _, err ->
                         submitting = false
@@ -668,7 +769,13 @@ private fun ConnectForm(
                 },
                 enabled = valid && !submitting,
             ) {
-                Text(if (submitting) L10n.t(R.string.s_5e8eb21201) else L10n.t(R.string.s_976d321fe5))
+                Text(
+                    if (submitting) {
+                        L10n.t(if (editing == null) R.string.s_5e8eb21201 else R.string.s_9b5d32d18c)
+                    } else {
+                        L10n.t(if (editing == null) R.string.s_976d321fe5 else R.string.s_be5fbbe34c)
+                    },
+                )
             }
         }
     }
@@ -699,4 +806,5 @@ private fun defaultName(proto: NetProtocol): String = when (proto) {
     NetProtocol.Webdav -> L10n.t(R.string.s_8f1b7aa16e)
     NetProtocol.Sftp -> L10n.t(R.string.s_cfa0d35954)
     NetProtocol.Smb -> L10n.t(R.string.s_79aa812258)
+    NetProtocol.S3 -> "S3"
 }

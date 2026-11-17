@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Environment
 import android.os.StatFs
 import android.provider.Settings
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Shield
@@ -29,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -41,7 +44,7 @@ import androidx.compose.ui.unit.sp
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StorageSheet(onDismiss: () -> Unit, onOpenFiles: () -> Unit, onOpenShared: () -> Unit) {
+fun StorageSheet(onDismiss: () -> Unit, onOpenFiles: () -> Unit, onOpenShared: () -> Unit, onCleanup: () -> Unit) {
     val context = LocalContext.current
     val allowed = remember { Environment.isExternalStorageManager() }
     val dataStat = remember { runCatching { StatFs(Environment.getDataDirectory().absolutePath) }.getOrNull() }
@@ -118,6 +121,16 @@ fun StorageSheet(onDismiss: () -> Unit, onOpenFiles: () -> Unit, onOpenShared: (
                     color = SfColors.OnSurfaceVariant,
                 )
             }
+            HorizontalDivider(modifier = Modifier.padding(horizontal = Dimens.Space6))
+            StorageLocationRow(
+                icon = Icons.Outlined.DeleteSweep,
+                iconTint = SfColors.Error,
+                title = L10n.t(R.string.s_cleanup_title),
+                subtitle = L10n.t(R.string.s_cleanup_hint),
+                meta = "",
+                action = "",
+                onClick = { onCleanup(); onDismiss() },
+            )
         }
     }
 }
@@ -130,15 +143,17 @@ private fun StorageLocationRow(
     meta: String,
     action: String,
     onClick: () -> Unit,
+    iconTint: Color = SfColors.Primary,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onClick)
             .padding(horizontal = Dimens.Space6, vertical = Dimens.Space2),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Dimens.Space3),
     ) {
-        Icon(icon, contentDescription = null, tint = SfColors.Primary)
+        Icon(icon, contentDescription = null, tint = iconTint)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = SfColors.OnSurface)
             Text(subtitle, fontSize = 11.sp, color = SfColors.OnSurfaceVariant)
@@ -148,8 +163,6 @@ private fun StorageLocationRow(
         }
         if (action.isNotEmpty()) {
             TextButton(onClick = onClick) { Text(action, fontSize = 13.sp) }
-        } else {
-            Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = SfColors.Outline)
         }
     }
 }

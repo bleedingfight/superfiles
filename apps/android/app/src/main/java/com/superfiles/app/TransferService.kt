@@ -148,7 +148,10 @@ class TransferService : Service() {
         private var running = false
 
         private fun TransferSnapshot.isActive(): Boolean =
-            state == TransferState.QUEUED || state == TransferState.RUNNING
+            state == TransferState.QUEUED ||
+                state == TransferState.RUNNING ||
+                // PAUSED 不是终态：FGS 必须继续保活，否则暂停任务被系统杀进程
+                state == TransferState.PAUSED
 
         /**
          * 传输轮询的唯一出口（约 0.7s/2.5s 一拍）：有活跃任务时确保服务在场并推送

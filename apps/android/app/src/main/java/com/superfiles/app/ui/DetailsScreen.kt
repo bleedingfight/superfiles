@@ -435,14 +435,6 @@ private fun MetaRow(label: String, value: String, onClick: (() -> Unit)? = null)
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        if (onClick != null) {
-            Icon(
-                Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                modifier = Modifier.size(Dimens.Space4),
-                tint = SfColors.Outline,
-            )
-        }
     }
 }
 

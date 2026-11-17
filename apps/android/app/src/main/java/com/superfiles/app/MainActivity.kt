@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         handleOAuthIntent(intent)
         handleShareIntent(intent)
+        handleLocalSendIntent(intent)
         requestNotificationPermission()
         setContent {
             SuperFilesTheme {
@@ -42,6 +43,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         handleOAuthIntent(intent)
         handleShareIntent(intent)
+        handleLocalSendIntent(intent)
     }
 
     /** Android 分享面板「发送到 superfiles」：交给 AppRoot 先选目标目录。 */
@@ -71,6 +73,13 @@ class MainActivity : ComponentActivity() {
         const val REQ_POST_NOTIFICATIONS = 1001
     }
 
+    /** `superfiles://localsend` 组网深链：注册对端（扫码行同一总线）。 */
+    private fun handleLocalSendIntent(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme != "superfiles" || data.host != "localsend") return
+        com.superfiles.app.LocalSendLinkBus.deliver(data.toString())
+    }
+
     /** `superfiles://oauth/callback` 深链：交给云盘授权框架完成 token 交换。 */
     private fun handleOAuthIntent(intent: Intent?) {
         val data = intent?.data ?: return
@@ -85,6 +94,8 @@ class MainActivity : ComponentActivity() {
             result
                 .getOrNull()
                 ?.onSuccess { provider ->
+                    // 授权成功：token 已加密保存，通知 ViewModel 完成挂载
+                    com.superfiles.app.cloud.CloudAuthBus.notifyAuthed(provider.id)
                     Toast.makeText(
                         this@MainActivity,
                         L10n.t(R.string.s_3de0ece3dc, (L10n.t(provider.displayNameRes))),

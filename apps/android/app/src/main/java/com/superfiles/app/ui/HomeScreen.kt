@@ -10,6 +10,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,12 +38,18 @@ import androidx.compose.material.icons.outlined.ArrowOutward
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.FolderZip
+import androidx.compose.material.icons.outlined.AudioFile
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.BusinessCenter
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.ContactPage
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Search
@@ -56,16 +63,22 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +86,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.superfiles.app.R
 import com.superfiles.core.Entry
 import com.superfiles.core.RecentOpen
@@ -82,6 +96,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /**
  * 首页——Figma「superfiles」稿《首页 · 栖档》（node 2:3507，design/figma/01-首页-栖档.png）
@@ -250,24 +265,34 @@ fun HomeScreen(
     onShareEntries: (List<Entry>) -> Unit = {},
     onOpenSharedStorage: () -> Unit = {},
     scanFraction: Float? = null,
+    scanLabel: String? = null,
+    onOpenIndexManage: () -> Unit = {},
     scanDone: Boolean = false,
     networkCount: Int = 0,
     onOpenNetwork: () -> Unit = {},
     networkMounts: List<com.superfiles.app.NetworkMountStatus> = emptyList(),
     onOpenMount: (com.superfiles.app.NetworkMountStatus) -> Unit = {},
     onDeleteMount: (com.superfiles.app.NetworkMountStatus) -> Unit = {},
+    onEditMount: (com.superfiles.app.NetworkMountStatus) -> Unit = {},
     onDeleteEntry: (Entry) -> Unit = {},
     onManageNetwork: () -> Unit = {},
+    onReorderMounts: (Int, Int) -> Unit = { _, _ -> },
     favorites: List<FavoriteItem> = emptyList(),
     onOpenFavoriteItem: (FavoriteItem) -> Unit = {},
     onManageFavorites: () -> Unit = {},
+    onReorderFavorites: (Int, Int) -> Unit = { _, _ -> },
     onOpenAppStorage: () -> Unit = {},
+    onCleanup: () -> Unit = {},
+    categoryStats: List<com.superfiles.app.CategoryStat> = emptyList(),
+    onOpenCategory: (String, Set<String>) -> Unit = { _, _ -> },
     nickname: String = L10n.t(R.string.s_0ed27cbb38),
     avatarChar: String = L10n.t(R.string.s_d9d28cb2a0),
 ) {
     var showStorageSheet by remember { mutableStateOf(false) }
-    // 待确认删除的网络存储连接（长按行 / 向左滑动行触发）
+    // 待确认删除的网络存储连接（长按菜单 / 向左滑动行触发）
     var pendingDeleteMount by remember { mutableStateOf<com.superfiles.app.NetworkMountStatus?>(null) }
+    // 长按网络存储行：操作菜单（打开 / 编辑 / 删除）
+    var mountMenuTarget by remember { mutableStateOf<com.superfiles.app.NetworkMountStatus?>(null) }
     // 最近打开：长按进入多选 + 左滑删除 + 滑动多选
     val recentSelection = remember { RecentSelectionState() }
     val recentDragTracker = remember { DragSelectTracker() }
@@ -300,10 +325,14 @@ fun HomeScreen(
                         avatarChar = avatarChar,
                         onSearch = onSearch,
                         scanFraction = scanFraction,
+                        scanLabel = scanLabel,
                         scanDone = scanDone,
+                        onOpenIndexManage = onOpenIndexManage,
                         networkCount = networkCount,
                         onOpenNetwork = onOpenNetwork,
                         onManageClick = { showStorageSheet = true },
+                        categoryStats = categoryStats,
+                        onOpenCategory = onOpenCategory,
                     )
                     LocalStorageSection(
                         onOpenSharedStorage = onOpenSharedStorage,
@@ -325,12 +354,14 @@ fun HomeScreen(
                         onOpenMount = onOpenMount,
                         onManageNetwork = onManageNetwork,
                         onDeleteRequest = { pendingDeleteMount = it },
+                        onReorder = onReorderMounts,
                     )
                     FavoritesSection(
                         favorites = favorites,
                         onOpenFavoriteItem = onOpenFavoriteItem,
                         onManageFavorites = onManageFavorites,
                         onDeleteEntry = onDeleteEntry,
+                        onReorder = onReorderFavorites,
                     )
                     SectionHeader(title = L10n.t(R.string.s_382399a9a1), action = L10n.t(R.string.s_4a7fea713c), onActionClick = onOpenFiles)
                     RecentFilesColumn(
@@ -359,10 +390,14 @@ fun HomeScreen(
                     avatarChar = avatarChar,
                     onSearch = onSearch,
                     scanFraction = scanFraction,
+                    scanLabel = scanLabel,
                     scanDone = scanDone,
+                    onOpenIndexManage = onOpenIndexManage,
                     networkCount = networkCount,
                     onOpenNetwork = onOpenNetwork,
                     onManageClick = { showStorageSheet = true },
+                    categoryStats = categoryStats,
+                    onOpenCategory = onOpenCategory,
                 )
                 LocalStorageSection(
                     onOpenSharedStorage = onOpenSharedStorage,
@@ -373,12 +408,14 @@ fun HomeScreen(
                     onOpenMount = onOpenMount,
                     onManageNetwork = onManageNetwork,
                     onDeleteRequest = { pendingDeleteMount = it },
+                    onReorder = onReorderMounts,
                 )
                 FavoritesSection(
                     favorites = favorites,
                     onOpenFavoriteItem = onOpenFavoriteItem,
                     onManageFavorites = onManageFavorites,
                     onDeleteEntry = onDeleteEntry,
+                    onReorder = onReorderFavorites,
                 )
                 SectionHeader(title = L10n.t(R.string.s_382399a9a1), action = L10n.t(R.string.s_4a7fea713c), onActionClick = onOpenFiles)
                 RecentFilesColumn(
@@ -423,6 +460,7 @@ fun HomeScreen(
                 onOpenFiles()
             },
             onOpenShared = onOpenSharedStorage,
+            onCleanup = onCleanup,
         )
     }
 
@@ -438,6 +476,54 @@ fun HomeScreen(
             onCancel = { pendingDeleteMount = null },
         )
     }
+
+    // 长按网络存储：操作菜单（打开 / 编辑 / 删除）
+    mountMenuTarget?.let { mount ->
+        val online = mount.rootId != null
+        SfDialog(
+            onDismissRequest = { mountMenuTarget = null },
+            title = mount.config.name,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(Dimens.Space1)) {
+                if (online) {
+                    MountMenuRow(Icons.Outlined.Folder, L10n.t(R.string.s_d7098f5050)) {
+                        mountMenuTarget = null
+                        onOpenMount(mount)
+                    }
+                }
+                MountMenuRow(Icons.Outlined.Edit, L10n.t(R.string.s_74f03bafc8)) {
+                    mountMenuTarget = null
+                    onEditMount(mount)
+                }
+                MountMenuRow(Icons.Outlined.Delete, L10n.t(R.string.s_2f4aaddde3), tint = SfColors.Error) {
+                    mountMenuTarget = null
+                    pendingDeleteMount = mount
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MountMenuRow(
+    icon: ImageVector,
+    label: String,
+    tint: Color = SfColors.OnSurface,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(Dimens.RadiusS))
+            .clickable(onClick = onClick)
+            .padding(horizontal = Dimens.Space2),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Dimens.Space3),
+    ) {
+        Icon(icon, contentDescription = null, tint = tint)
+        Text(label, fontSize = 14.sp, color = tint)
+    }
 }
 
 // ---- 首页分区：单列（竖屏）与双列（横屏/大屏）共用同一份实现 ----
@@ -448,17 +534,25 @@ private fun HomeOverviewSection(
     avatarChar: String,
     onSearch: () -> Unit,
     scanFraction: Float?,
+    scanLabel: String? = null,
     scanDone: Boolean,
+    onOpenIndexManage: () -> Unit = {},
     networkCount: Int,
     onOpenNetwork: () -> Unit,
     onManageClick: () -> Unit,
+    categoryStats: List<com.superfiles.app.CategoryStat> = emptyList(),
+    onOpenCategory: (String, Set<String>) -> Unit = { _, _ -> },
 ) {
     GreetingHeader(nickname = nickname, avatarChar = avatarChar)
     SearchEntryBar(placeholder = L10n.t(R.string.s_1f526b56a8), onClick = onSearch)
+    // 与鸿蒙一致：分类聚合位于「搜索」与「存储用量」之间
+    CategorySection(stats = categoryStats, onOpen = onOpenCategory)
     UsageCard(
         usage = rememberDeviceUsage(),
         scanFraction = scanFraction,
+        scanLabel = scanLabel,
         scanDone = scanDone,
+        onOpenIndexManage = onOpenIndexManage,
         networkCount = networkCount,
         onOpenNetwork = onOpenNetwork,
         onManageClick = onManageClick,
@@ -501,16 +595,65 @@ private fun NetworkMountsSection(
     onOpenMount: (com.superfiles.app.NetworkMountStatus) -> Unit,
     onManageNetwork: () -> Unit,
     onDeleteRequest: (com.superfiles.app.NetworkMountStatus) -> Unit,
+    onReorder: (Int, Int) -> Unit,
 ) {
     if (networkMounts.isEmpty()) return
+    val haptics = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val heights = remember { mutableStateMapOf<Int, Float>() }
+    var dragging by remember { mutableStateOf(-1) }
+    var dragOffset by remember { mutableStateOf(0f) }
+    val haptic = LocalHapticFeedback.current
+
     SectionHeader(title = L10n.t(R.string.s_6b8409e709), action = L10n.t(R.string.s_08b55fea3c), onActionClick = onManageNetwork)
     ListSectionCard {
         networkMounts.forEachIndexed { index, mount ->
-            NetworkMountRow(
-                mount = mount,
-                onClick = { onOpenMount(mount) },
-                onDeleteRequest = { onDeleteRequest(mount) },
-            )
+            val isDragging = index == dragging
+            val currentIndex by rememberUpdatedState(index)
+            Box(
+                modifier = Modifier
+                    .zIndex(if (isDragging) 1f else 0f)
+                    .graphicsLayer {
+                        translationY = if (isDragging) dragOffset else 0f
+                        shadowElevation = if (isDragging) 6f else 0f
+                    }
+                    .onGloballyPositioned { coords ->
+                        heights[index] = coords.size.height.toFloat()
+                    }
+                    .pointerInput(mount.config.name) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                dragging = currentIndex
+                                dragOffset = 0f
+                            },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                dragOffset += amount.y
+                            },
+                            onDragEnd = {
+                                val from = currentIndex
+                                val h = heights[from]?.takeIf { it > 0f }
+                                    ?: with(density) { 64.dp.toPx() }
+                                val shift = (dragOffset / h).roundToInt()
+                                val target = (from + shift).coerceIn(0, networkMounts.lastIndex)
+                                if (target != from) onReorder(from, target)
+                                dragging = -1
+                                dragOffset = 0f
+                            },
+                            onDragCancel = {
+                                dragging = -1
+                                dragOffset = 0f
+                            },
+                        )
+                    },
+            ) {
+                NetworkMountRow(
+                    mount = mount,
+                    onClick = { onOpenMount(mount) },
+                    onDeleteRequest = { onDeleteRequest(mount) },
+                )
+            }
             if (index < networkMounts.lastIndex) RowDivider()
         }
     }
@@ -523,24 +666,72 @@ private fun FavoritesSection(
     onOpenFavoriteItem: (FavoriteItem) -> Unit,
     onManageFavorites: () -> Unit,
     onDeleteEntry: (Entry) -> Unit,
+    onReorder: (Int, Int) -> Unit,
 ) {
     if (favorites.isEmpty()) return
+    val haptics = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val heights = remember { mutableStateMapOf<Int, Float>() }
+    var dragging by remember { mutableStateOf(-1) }
+    var dragOffset by remember { mutableStateOf(0f) }
+
     SectionHeader(title = L10n.t(R.string.s_975ff67ee1), action = L10n.t(R.string.s_08b55fea3c), onActionClick = onManageFavorites)
     ListSectionCard {
         val shown = favorites.take(5)
         shown.forEachIndexed { index, item ->
-            SwipeRevealRow(
-                onDelete = { onDeleteEntry(item.entry) },
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = Dimens.Space4,
-                ),
+            val isDragging = index == dragging
+            val currentIndex by rememberUpdatedState(index)
+            Box(
+                modifier = Modifier
+                    .zIndex(if (isDragging) 1f else 0f)
+                    .graphicsLayer {
+                        translationY = if (isDragging) dragOffset else 0f
+                        shadowElevation = if (isDragging) 6f else 0f
+                    }
+                    .onGloballyPositioned { coords ->
+                        heights[index] = coords.size.height.toFloat()
+                    }
+                    .pointerInput(item.entry.id) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                dragging = currentIndex
+                                dragOffset = 0f
+                            },
+                            onDrag = { change, amount ->
+                                change.consume()
+                                dragOffset += amount.y
+                            },
+                            onDragEnd = {
+                                val from = currentIndex
+                                val h = heights[from]?.takeIf { it > 0f }
+                                    ?: with(density) { 64.dp.toPx() }
+                                val shift = (dragOffset / h).roundToInt()
+                                val target = (from + shift).coerceIn(0, shown.lastIndex)
+                                if (target != from) onReorder(from, target)
+                                dragging = -1
+                                dragOffset = 0f
+                            },
+                            onDragCancel = {
+                                dragging = -1
+                                dragOffset = 0f
+                            },
+                        )
+                    },
             ) {
-                FileListRow(
-                    badge = fileBadgeOf(item.entry),
-                    name = item.entry.name,
-                    meta = item.location,
-                    onClick = { onOpenFavoriteItem(item) },
-                )
+                SwipeRevealRow(
+                    onDelete = { onDeleteEntry(item.entry) },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        horizontal = Dimens.Space4,
+                    ),
+                ) {
+                    FileListRow(
+                        badge = fileBadgeOf(item.entry),
+                        name = item.entry.name,
+                        meta = item.location,
+                        onClick = { onOpenFavoriteItem(item) },
+                    )
+                }
             }
             if (index < shown.lastIndex) RowDivider()
         }
@@ -597,7 +788,9 @@ private fun GreetingHeader(nickname: String, avatarChar: String) {
 private fun UsageCard(
     usage: HomeUsage,
     scanFraction: Float?,
+    scanLabel: String?,
     scanDone: Boolean,
+    onOpenIndexManage: () -> Unit,
     networkCount: Int,
     onOpenNetwork: () -> Unit,
     onManageClick: () -> Unit,
@@ -662,18 +855,16 @@ private fun UsageCard(
                     fontSize = 12.sp,
                     color = SfColors.Primary,
                 )
-                Spacer(Modifier.weight(1f))
-                Icon(
-                    Icons.Outlined.ChevronRight,
-                    contentDescription = null,
-                    modifier = Modifier.size(Dimens.Space4),
-                    tint = SfColors.Outline,
-                )
             }
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(usage.percentLabel, fontSize = 10.sp, color = SfColors.Primary)
                 Spacer(Modifier.weight(1f))
-                ScanStatus(scanFraction = scanFraction, scanDone = scanDone)
+                ScanStatus(
+                    scanFraction = scanFraction,
+                    scanLabel = scanLabel,
+                    scanDone = scanDone,
+                    onClick = onOpenIndexManage,
+                )
             }
         }
     }
@@ -684,8 +875,23 @@ private fun UsageCard(
  * 未扫描过 = 云端同步样式（稿内原样）。扫描完全在后台线程，前台无阻塞。
  */
 @Composable
-private fun ScanStatus(scanFraction: Float?, scanDone: Boolean) {
+private fun ScanStatus(
+    scanFraction: Float?,
+    scanLabel: String?,
+    scanDone: Boolean,
+    onClick: () -> Unit,
+) {
+    val percent = ((scanFraction ?: 0f) * 100).toInt()
     Row(
+        modifier = if (scanFraction != null) {
+            // 扫描中：整行可点，直接进「索引管理」看是哪个存储在索引、多少了
+            Modifier
+                .clip(RoundedCornerShape(Dimens.RadiusS))
+                .clickable(onClick = onClick)
+                .padding(horizontal = 2.dp, vertical = 1.dp)
+        } else {
+            Modifier
+        },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Dimens.Space1),
     ) {
@@ -693,9 +899,15 @@ private fun ScanStatus(scanFraction: Float?, scanDone: Boolean) {
             scanFraction != null -> {
                 PieProgress(fraction = scanFraction)
                 Text(
-                    L10n.t(R.string.s_33e6a5b4e3, ((scanFraction * 100).toInt())),
+                    if (scanLabel != null) {
+                        L10n.t(R.string.s_index_building_named, scanLabel, percent.toString())
+                    } else {
+                        L10n.t(R.string.s_33e6a5b4e3, percent)
+                    },
                     fontSize = 10.sp,
                     color = SfColors.Primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             scanDone -> {
@@ -834,7 +1046,7 @@ private fun RootCard(
     }
 }
 
-/** 网络存储列表行：协议图标 + 名称/连接状态 + chevron；左滑或长按可移除连接。 */
+/** 网络存储列表行：协议图标 + 名称/连接状态 + chevron；左滑删除，长按打开操作菜单。 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NetworkMountRow(
@@ -843,7 +1055,6 @@ private fun NetworkMountRow(
     onDeleteRequest: () -> Unit,
 ) {
     val online = mount.rootId != null
-    val haptics = LocalHapticFeedback.current
     SwipeRevealRow(
         onDelete = onDeleteRequest,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Dimens.Space4),
@@ -851,18 +1062,12 @@ private fun NetworkMountRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onDeleteRequest()
-                    },
-                )
+                .clickable(onClick = onClick)
                 .padding(vertical = Dimens.Space3),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Dimens.Space3),
         ) {
-            Icon(networkProtocolIcon(mount.config.protocol), contentDescription = null, tint = SfColors.Primary)
+            StorageProtoLogo(mount.config.protocol)
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -887,14 +1092,34 @@ private fun NetworkMountRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Icon(
-                Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                modifier = Modifier.size(Dimens.Space4),
-                tint = SfColors.Outline,
-            )
         }
     }
+}
+
+/** 首页分类聚合：图片 / 视频 / 文档 / 音频 / 压缩包（数量来自索引）。 */
+@Composable
+private fun CategorySection(
+    stats: List<com.superfiles.app.CategoryStat>,
+    onOpen: (String, Set<String>) -> Unit,
+) {
+    if (stats.isEmpty()) return
+    val cards = stats.map { stat ->
+        val (icon, tint) = when (stat.key) {
+            "image" -> Icons.Outlined.Image to SfColors.Success
+            "video" -> Icons.Outlined.Movie to SfColors.Primary
+            "doc" -> Icons.Outlined.Description to SfColors.PrimaryWarm
+            "audio" -> Icons.Outlined.AudioFile to SfColors.Success
+            else -> Icons.Outlined.FolderZip to SfColors.OnSurfaceVariant
+        }
+        FolderCardData(
+            name = stat.label,
+            subtitle = L10n.t(R.string.s_cat_count, stat.count.toString()),
+            icon = icon,
+            tint = tint,
+            onClick = { onOpen(stat.label, stat.exts) },
+        )
+    }
+    FolderCardsRow(cards)
 }
 
 @Composable

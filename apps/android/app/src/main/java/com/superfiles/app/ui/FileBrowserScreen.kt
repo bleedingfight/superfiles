@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.BasicTextField
@@ -113,11 +114,17 @@ private enum class BatchDialog { Copy, Move, Compress, Delete, Send }
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FileBrowserScreen(viewModel: VfsViewModel = viewModel()) {
+fun FileBrowserScreen(
+    viewModel: VfsViewModel = viewModel(),
+    // 由 AppRoot 持有：预览页/详情页会把这个 composable 移出组合，
+    // 状态放在这里才能保证「预览退出后回到原来的滚动位置」。
+    scrollStates: MutableMap<String, LazyListState> = remember { mutableMapOf() },
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     // 滑动多选：记录各行窗口位置，长按后拖动可连续选中
     val dragTracker = remember { DragSelectTracker() }
+    // 每个目录/分类独立记忆滚动位置：进入子目录或预览后再返回时回到原位置
     // 平板/折叠展开（≥840dp）：左列表 + 右预览双栏。点文件先选中预览，
     // 「打开文件」再交给外部应用；目录仍是单击进入。
     val expanded = isExpandedLayout()
@@ -331,6 +338,10 @@ fun FileBrowserScreen(viewModel: VfsViewModel = viewModel()) {
                     // 方案 A（docs/06 §2.6）：整组一张白卡 + 行间发丝线，卡片随内容滚动；
                     // 卡内行仍是 FileListRow 的 74dp 平铺密度，只是多了边界。
                     LazyColumn(
+                        state = scrollStates.getOrPut(
+                            // 分类结果和普通目录分开记：两者 currentId 相同但列表不同
+                            state.filterLabel?.let { "filter:$it" } ?: state.currentId,
+                        ) { LazyListState() },
                         modifier = Modifier
                             // 宽窗走双栏（列表占左栏）；更窄时按可读宽度居中限宽
                             .then(
@@ -363,7 +374,7 @@ fun FileBrowserScreen(viewModel: VfsViewModel = viewModel()) {
                             name = entry.name,
                             // 搜索/类型筛选结果：副标题展示「所在位置」，区分不同目录的同名文件
                             meta = if (inResultView) {
-                                state.entryLocations[entry.id] ?: ""
+                                state.locationProvider?.invoke(entry) ?: ""
                             } else {
                                 subtitle(entry)
                             },
@@ -382,8 +393,8 @@ fun FileBrowserScreen(viewModel: VfsViewModel = viewModel()) {
                                     // 双栏：先选中在右栏预览，「打开文件」再外发
                                     previewId = entry.id
                                 } else {
-                                    // 本地直开；网络挂载文件异步下载后打开
-                                    openEntryFile(context, viewModel, entry, chooser = false)
+                                    // 可预览文档（pdf/office/文本）进应用内预览；其余外部打开
+                                    openEntryPrimary(context, viewModel, entry)
                                 }
                             },
                             onLongClick = {
@@ -427,7 +438,7 @@ fun FileBrowserScreen(viewModel: VfsViewModel = viewModel()) {
                             if (target.kind == EntryKind.DIRECTORY) {
                                 viewModel.openEntry(target)
                             } else {
-                                openEntryFile(context, viewModel, target, chooser = false)
+                                openEntryPrimary(context, viewModel, target)
                             }
                         },
                         onShare = { target -> viewModel.startShare(listOf(target)) },

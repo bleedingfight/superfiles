@@ -89,7 +89,7 @@
     <string name="s_30f7dd4ecd">連線</string>
     <string name="s_310012635f">複製 %1$s 項到…</string>
     <string name="s_313fd34061">壓縮包名稱</string>
-    <string name="s_316ddc8bcb">儲存與索引</string>
+    <string name="s_316ddc8bcb">儲存和索引</string>
     <string name="s_318676908a">清晨第一件事：讓檔案各就各位。</string>
     <string name="s_32890a42e9">網路儲存 · %1$s 個連線</string>
     <string name="s_32a1bd2536">1 項</string>
@@ -177,6 +177,7 @@
     <string name="s_6122f7b929">分享連結</string>
     <string name="s_613cd7dda1">進行中 %1$s</string>
     <string name="s_61437e8012">搜尋檔案，或試試「上個月的照片」</string>
+    <string name="s_6175e09bb1">編輯網路儲存</string>
     <string name="s_62205f7a09">歸檔.zip</string>
     <string name="s_625fb26b4b">取消</string>
     <string name="s_6340d9f50c">該伺服器不支援共享列舉（RPC 語法不相容，常見於老 Samba/路由器），請手動填寫共享名</string>
@@ -194,6 +195,7 @@
     <string name="s_68905cf391">線上</string>
     <string name="s_68d982a1cc">移動</string>
     <string name="s_694fc5efa9">重新整理</string>
+    <string name="s_6a62bcae24">已更新網路儲存「%1$s」</string>
     <string name="s_6a67c171fb">已開始複製 %1$s 項</string>
     <string name="s_6ab1f1775c">晚上好</string>
     <string name="s_6b8409e709">我的網路儲存</string>
@@ -213,6 +215,7 @@
     <string name="s_72d6759906">正在傳送…</string>
     <string name="s_734b9bcdf7">該目錄受系統保護（Android/data、Android/obb 對所有應用不可讀），請換一個位置</string>
     <string name="s_736eaaaec5">新增標籤</string>
+    <string name="s_74f03bafc8">編輯連線</string>
     <string name="s_755250b5af">在任意目錄行的「⋯ → 加入索引位置」新增；網路大目錄首次掃描較慢，成本由你決定</string>
     <string name="s_7653297de3">跳轉</string>
     <string name="s_76cf118510">收起說明</string>
@@ -271,6 +274,7 @@
     <string name="s_9a2d499961">第 %1$s / %2$s 項 · </string>
     <string name="s_9ae2a3725b">已恢復傳輸</string>
     <string name="s_9b3920387b">正在搜尋附近裝置…</string>
+    <string name="s_9b5d32d18c">儲存中…</string>
     <string name="s_9c5c5cdbc5">瀏覽</string>
     <string name="s_9d2cff41c3">主機 + 埠(預設 22)</string>
     <string name="s_9d2e334ea2">Store（僅打包，更快）</string>
@@ -389,7 +393,7 @@
     <string name="s_dc36e7919d">埠：%1$s</string>
     <string name="s_dc9562b892">所有檔案訪問許可權</string>
     <string name="s_dcfb689011">準備中…</string>
-    <string name="s_de06163276">立即重建索引</string>
+    <string name="s_de06163276">重建索引</string>
     <string name="s_de40885484">%1$s · 搜尋：%2$s</string>
     <string name="s_df424b7878">· 群暉/威聯通：控制面板 → 共享資料夾 的名稱\n</string>
     <string name="s_df86c859dc">無法定位本地檔案</string>
@@ -412,8 +416,13 @@
     <string name="s_ea4a363d8f">未開啟</string>
     <string name="s_ebef679e28">沒有選中檔案</string>
     <string name="s_ec82eb15e1">123盤</string>
+    <string name="s_google_drive">Google 雲端硬碟</string>
+    <string name="s_dropbox">Dropbox</string>
+    <string name="s_cleanup_title">清理檔案</string>
+    <string name="s_cleanup_hint">按大小排序 · 左滑刪除</string>
+    <string name="s_cleanup_empty">沒有可清理的檔案</string>
     <string name="s_ec9b0f49d2">本地資料 · 點選編輯</string>
-    <string name="s_eca99856f2">匯出診斷包</string>
+    <string name="s_eca99856f2">匯出診斷</string>
     <string name="s_ed4613d9b9">移除網路儲存</string>
     <string name="s_ededa3026a">例如：林悅</string>
     <string name="s_ee316034c4"> · 已授權，可直接瀏覽</string>
@@ -448,4 +457,55 @@
     <string name="s_feed0b2e46">傳輸中心</string>
     <string name="s_ff6c6ad72b">終止</string>
     <string name="s_fff96edebc">更多操作</string>
+
+<!-- 文件預覽（PDF 應用內渲染 / 佔位頁外部開啟） -->
+    <string name="s_a060fa75e7">正在獲取檔案…</string>
+    <string name="s_5bd5a2e741">正在解析 PDF…</string>
+    <string name="s_1b4d0cd413">PDF 開啟失敗</string>
+    <string name="s_98c0a4c46d">檔案過大，暫不支援預覽</string>
+    <string name="s_42c30c5461">第 %1$d 頁</string>
+    <string name="s_5660c3acf0">共 %1$d 頁</string>
+    <string name="s_a775c7f05c">這個格式應用內沒有渲染器</string>
+    <string name="s_a9e636982d">使用其他應用程式開啟</string>
+    <string name="s_3f020d7809">找不到可開啟該檔案的應用</string>
+    <string name="s_b699a4247a">儲存清理</string>
+    <string name="s_audio_handoff">音頻格式應用內播放不了，已嘗試交給其他應用打開</string>
+    <string name="s_lswiz_title">一鍵組網</string>
+    <string name="s_lswiz_hint">沒有路由器、或網路被隔離時，兩台裝置直連互傳</string>
+    <string name="s_lswiz_host">我是發起端（開熱點）</string>
+    <string name="s_lswiz_client">我是加入端</string>
+    <string name="s_lswiz_need_start">開啟近鄰傳輸後才展示組網碼</string>
+    <string name="s_lswiz_start_now">立即開啟</string>
+    <string name="s_lswiz_no_ip">未取到本機地址，請確認已連 Wi-Fi 或已開熱點</string>
+    <string name="s_lswiz_host_hint">對方連入後掃描此碼（也可等下方雷達自動發現）</string>
+    <string name="s_lswiz_open_settings">打開系統熱點設定</string>
+    <string name="s_lswiz_scan">掃一掃對方的組網碼</string>
+    <string name="s_lswiz_scan_hint">也可以先連上對方的熱點，雷達會自動發現對方</string>
+    <string name="s_lswiz_scan_frame_hint">對準對方螢幕上的組網碼</string>
+    <string name="s_lswiz_cam_denied">需要相機權限才能掃碼</string>
+    <string name="s_lswiz_peer_added">已添加對方：%1$s</string>
+    <string name="s_lswiz_bad">無效的組網碼</string>
+    <string name="s_ls_records_title">近鄰傳輸</string>
+    <string name="s_ls_recv_title">已接收 · 存於「%1$s」</string>
+    <string name="s_lswiz_idle_title">無傳輸活動自動關閉</string>
+    <string name="s_lswiz_idle_change">修改</string>
+    <string name="s_lswiz_idle_cancel">取消</string>
+    <string name="s_lswiz_idle_never">永不</string>
+    <string name="s_lswiz_idle_min">分鐘</string>
+
+    <!-- 传输卡片：标题兜底 + 开始/结束/耗时（对齐鸿蒙 TransfersView.timesLine） -->
+    <string name="s_tr_items">%1$s 項文件</string>
+    <string name="s_tr_start_at">開始</string>
+    <string name="s_tr_end_at">結束</string>
+    <string name="s_tr_cost">耗時</string>
+    <string name="s_tr_dur_sec">%1$s 秒</string>
+    <string name="s_tr_dur_min_sec">%1$s 分 %2$s 秒</string>
+    <string name="s_tr_dur_min">%1$s 分鐘</string>
+    <string name="s_tr_dur_hr_min">%1$s 小時 %2$s 分</string>
+    <string name="s_tr_dur_hr">%1$s 小時</string>
+
+    <!-- 传输暂停（左滑操作条 + 状态标签；engine TransferState.PAUSED） -->
+    <string name="s_tr_pause">暫停</string>
+    <string name="s_tr_paused">已暫停</string>
+    <string name="s_tr_avg_speed">平均 %1$s</string>
 </resources>

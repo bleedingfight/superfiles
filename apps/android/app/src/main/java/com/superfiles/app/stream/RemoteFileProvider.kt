@@ -147,6 +147,9 @@ class RemoteFileProvider : ContentProvider() {
                 }
 
                 override fun onRelease() {
+                    // 播放器关闭：删除 WebDAV 边播边缓存的临时文件
+                    runCatching { appCore?.releaseStream(id) }
+                        .onFailure { com.superfiles.app.SfLog.e("provider release cache failed: $id", it) }
                     if (readCount == 0L) {
                         com.superfiles.app.SfLog.i("provider session: $id（未发生读取即关闭）")
                         return

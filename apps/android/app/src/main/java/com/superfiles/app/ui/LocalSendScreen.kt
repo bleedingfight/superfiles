@@ -3,6 +3,8 @@ package com.superfiles.app.ui
 import com.superfiles.app.L10n
 import com.superfiles.app.R
 
+import android.content.Intent
+
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +29,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -34,6 +41,7 @@ import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -52,6 +60,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,7 +71,7 @@ import com.superfiles.core.LocalSendPeer
 
 /**
  * 近邻传输（LocalSend 兼容）：HTTPS 接收 + 组播发现 + 手动 IP 兜底。
- * 首次连接以证书指纹做 TOFU；接收文件默认落到「应用存储/LocalSend」。
+ * 首次连接以证书指纹做 TOFU；接收文件默认落到「应用存储/superfiles」。
  */
 @Composable
 fun LocalSendScreen(
@@ -77,6 +87,15 @@ fun LocalSendScreen(
     var showDestPicker by remember { mutableStateOf(false) }
     val fallbackDestPath = remember { viewModel.localSendDestDir() }
     val fallbackDestLabel = remember { viewModel.localSendDestLabel() }
+    val context = LocalContext.current
+    var ips by remember { mutableStateOf(listOf<String>()) }
+    var scanOpen by remember { mutableStateOf(false) }
+    var idlePicker by remember { mutableStateOf(false) }
+
+    // 服务器启停时刷新本机私网 IP（组网码展示用）
+    LaunchedEffect(state.localSendRunning, state.localSendInfo?.port) {
+        ips = viewModel.localSendIps()
+    }
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(modifier = Modifier.widthIn(max = Adaptive.ListMaxWidth).fillMaxSize()) {
@@ -117,6 +136,43 @@ fun LocalSendScreen(
                     )
                 }
 
+                // 对端能被雷达/注册发现 = 已在同一局域网，组网向导按需让位
+                if (state.localSendPeers.isEmpty()) {
+                    item {
+                        PairingCard(
+                            running = state.localSendRunning,
+                            ips = ips,
+                            port = state.localSendInfo?.port?.toInt(),
+                            fingerprint = state.localSendInfo?.fingerprint,
+                            onOpenSettings = {
+                                runCatching { context.startActivity(Intent("android.settings.TETHER_SETTINGS")) }
+                            },
+                            onStart = viewModel::startLocalSend,
+                            onScan = { scanOpen = true },
+                        )
+                    }
+                }
+
+                item {
+                    ListSectionCard {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(Dimens.Space4),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(L10n.t(R.string.s_lswiz_idle_title), fontSize = 13.sp, color = SfColors.OnSurface)
+                                Text(idleLabelOf(state.localSendIdleSecs), fontSize = 11.sp, color = SfColors.OnSurfaceVariant)
+                            }
+                            Text(
+                                L10n.t(R.string.s_lswiz_idle_change),
+                                fontSize = 12.sp,
+                                color = SfColors.Primary,
+                                modifier = Modifier.clickable { idlePicker = true },
+                            )
+                        }
+                    }
+                }
+
                 item { SectionLabel(L10n.t(R.string.s_9662acf715), action = L10n.t(R.string.s_694fc5efa9), onAction = viewModel::refreshLocalSendPeers) }
                 if (state.localSendPeers.isEmpty()) {
                     item {
@@ -154,6 +210,40 @@ fun LocalSendScreen(
                             state.localSendPeers.forEachIndexed { index, peer ->
                                 PeerRow(peer = peer)
                                 if (index < state.localSendPeers.lastIndex) RowDivider(start = Dimens.Space4)
+                            }
+                        }
+                    }
+                }
+
+                // 已接收清单：常驻展示“收到了什么、什么时候、多大”，点行直达所在目录
+                if (state.localSendReceived.isNotEmpty()) {
+                    item {
+                        SectionLabel(L10n.t(R.string.s_ls_recv_title, (state.localSendDestName.ifBlank { fallbackDestLabel })))
+                    }
+                    item {
+                        ListSectionCard {
+                            val fmt = remember { java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()) }
+                            state.localSendReceived.forEachIndexed { index, r ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onOpenDest() }
+                                        .padding(horizontal = Dimens.Space4, vertical = Dimens.Space3),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("📄", fontSize = 18.sp)
+                                    Column(
+                                        modifier = Modifier.weight(1f).padding(start = Dimens.Space3),
+                                    ) {
+                                        Text(r.name, fontSize = 14.sp, color = SfColors.OnSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            "${fmt.format(java.util.Date(r.atMs))} · ${android.text.format.Formatter.formatShortFileSize(context, r.sizeBytes)}",
+                                            fontSize = 11.sp,
+                                            color = SfColors.OnSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                if (index < state.localSendReceived.lastIndex) RowDivider(start = Dimens.Space4)
                             }
                         }
                     }
@@ -273,7 +363,73 @@ fun LocalSendScreen(
             },
         )
     }
+
+    if (scanOpen) {
+        QrScanSheet(
+            onClose = { scanOpen = false },
+            onResult = { link ->
+                scanOpen = false
+                viewModel.registerFromLocalSendLink(link)
+            },
+        )
+    }
+
+    if (idlePicker) {
+        SfDialog(
+            onDismissRequest = { idlePicker = false },
+            title = L10n.t(R.string.s_lswiz_idle_title),
+            actions = {
+                SafeCancelButton(onClick = { idlePicker = false })
+            },
+        ) {
+            IDLE_OPTIONS.forEach { secs ->
+                Text(
+                    idleLabelOf(secs),
+                    fontSize = 14.sp,
+                    color = if (secs == state.localSendIdleSecs) SfColors.Primary else SfColors.OnSurface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            viewModel.setLocalSendIdleSecs(secs)
+                            idlePicker = false
+                        }
+                        .padding(vertical = Dimens.Space3),
+                )
+            }
+        }
+    }
 }
+
+/** 分段文字钮（组网卡二选一)：选中 primary + Medium，未选 onSurfaceVariant。 */
+@Composable
+private fun RowScope.PairSegment(
+    label: String,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(Dimens.RadiusS))
+            .clickable(onClick = onClick)
+            .padding(vertical = Dimens.Space2),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            fontSize = 13.sp,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (active) SfColors.Primary else SfColors.OnSurfaceVariant,
+        )
+    }
+}
+
+/** 无传输活动自动关闭的可选时长（秒）。 */
+private val IDLE_OPTIONS = listOf(300L, 600L, 1800L, 3600L, 0L)
+
+private fun idleLabelOf(secs: Long): String =
+    if (secs <= 0) L10n.t(R.string.s_lswiz_idle_never)
+    else "${secs / 60} ${L10n.t(com.superfiles.app.R.string.s_lswiz_idle_min)}"
 
 @Composable
 private fun ReceiveLocationCard(
@@ -629,6 +785,121 @@ fun LocalSendPeerPicker(
                             if (index < state.localSendPeers.lastIndex) RowDivider(start = Dimens.Space4)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- 一键组网（v1 热点向导 + v2 组网码）
+
+/** 组网深链（两端同契约）：superfiles://localsend?ip=..&port=..&fp=.. */
+internal fun buildLocalSendLink(ip: String, port: Int?, fingerprint: String?): String =
+    "superfiles://localsend?ip=$ip&port=${port ?: 53317}" +
+        (if (!fingerprint.isNullOrBlank()) "&fp=$fingerprint" else "")
+
+/**
+ * 一键组网卡：
+ * - 发起端：跳系统热点设置；接收模式运行中时展示组网码（QR + 链接文本），
+ *   对方扫码即等于手动 IP 注册（AP 隔离也能直连）。
+ * - 加入端：App 内扫码（QrScanSheet）或先连对方热点等雷达自动发现。
+ */
+@Composable
+private fun PairingCard(
+    running: Boolean,
+    ips: List<String>,
+    port: Int?,
+    fingerprint: String?,
+    onOpenSettings: () -> Unit,
+    onStart: () -> Unit,
+    onScan: () -> Unit,
+) {
+    var panel by remember { mutableStateOf<String?>(null) }
+    var selIp by remember(ips) { mutableStateOf(ips.firstOrNull()) }
+
+    ListSectionCard {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(Dimens.Space4),
+            verticalArrangement = Arrangement.spacedBy(Dimens.Space2),
+        ) {
+            Text(
+                L10n.t(R.string.s_lswiz_title),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = SfColors.OnSurface,
+            )
+            Text(L10n.t(R.string.s_lswiz_hint), fontSize = 11.sp, color = SfColors.OnSurfaceVariant)
+
+            // 分段入口走「文字按钮」规范：选中 primary 强调、未选 onSurfaceVariant，不自造底色
+            Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(Dimens.RadiusS))) {
+                PairSegment(
+                    label = L10n.t(R.string.s_lswiz_host),
+                    active = panel == "host",
+                    modifier = Modifier.weight(1f),
+                ) { panel = if (panel == "host") null else "host" }
+                PairSegment(
+                    label = L10n.t(R.string.s_lswiz_client),
+                    active = panel == "client",
+                    modifier = Modifier.weight(1f),
+                ) { panel = if (panel == "client") null else "client" }
+            }
+
+            when (panel) {
+                "host" -> {
+                    if (!running) {
+                        Text(L10n.t(R.string.s_lswiz_need_start), fontSize = 11.sp, color = SfColors.OnSurfaceVariant)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                            PrimaryConfirmButton(L10n.t(R.string.s_lswiz_start_now), onClick = onStart)
+                        }
+                    } else if (ips.isEmpty()) {
+                        Text(L10n.t(R.string.s_lswiz_no_ip), fontSize = 11.sp, color = SfColors.OnSurfaceVariant)
+                    } else {
+                        if (selIp == null) selIp = ips.first()
+                        Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                            ips.forEach { ip ->
+                                FilterChip(
+                                    selected = ip == selIp,
+                                    onClick = { selIp = ip },
+                                    label = { Text(ip, fontSize = 11.sp) },
+                                    modifier = Modifier.padding(end = Dimens.Space1),
+                                )
+                            }
+                        }
+                        selIp?.let { ip ->
+                            val qr = remember(ip, port, fingerprint) {
+                                qrBitmapOf(buildLocalSendLink(ip, port, fingerprint), 640)
+                            }
+                            qr?.let { bmp ->
+                                Image(
+                                    bitmap = bmp.asImageBitmap(),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(220.dp)
+                                        .align(Alignment.CenterHorizontally),
+                                )
+                            }
+                            Text(
+                                buildLocalSendLink(ip, port, fingerprint),
+                                fontSize = 10.sp,
+                                color = SfColors.OnSurfaceVariant,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                    Text(L10n.t(R.string.s_lswiz_host_hint), fontSize = 11.sp, color = SfColors.OnSurfaceVariant)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                        TextButton(onClick = onOpenSettings) {
+                            Text(L10n.t(R.string.s_lswiz_open_settings), fontSize = 12.sp, color = SfColors.Primary)
+                        }
+                    }
+                }
+                "client" -> {
+                    PrimaryConfirmButton(
+                        L10n.t(R.string.s_lswiz_scan),
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onScan,
+                    )
+                    Text(L10n.t(R.string.s_lswiz_scan_hint), fontSize = 11.sp, color = SfColors.OnSurfaceVariant)
                 }
             }
         }

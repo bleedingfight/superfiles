@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.superfiles.app.BrowserRoot
+import com.superfiles.app.NetworkMountStatus
 import com.superfiles.app.ShareIntakeBus
 import com.superfiles.app.VfsViewModel
 
@@ -71,9 +72,16 @@ fun AppRoot(vfsViewModel: VfsViewModel = viewModel()) {
     val activity = remember { context.findActivity() }
     var lastBackAt by remember { mutableStateOf(0L) }
     var showNetworkSheet by remember { mutableStateOf(false) }
+    var debugCloudSheet by remember { mutableStateOf(false) }
+    // 首页长按「编辑连接」→ 打开网络面板并直接进入该连接的编辑表单
+    var networkEditTarget by remember { mutableStateOf<NetworkMountStatus?>(null) }
     var showFavoritesPage by remember { mutableStateOf(false) }
     var showTransfersPage by remember { mutableStateOf(false) }
     var showLocalSendPage by remember { mutableStateOf(false) }
+    var showCleanupPage by remember { mutableStateOf(false) }
+    var showIndexPage by remember { mutableStateOf(false) }
+    // 文件页滚动位置：挂在 AppRoot 上，预览/详情页替换文件页时也不会丢
+    val fileScrollStates = remember { mutableMapOf<String, androidx.compose.foundation.lazy.LazyListState>() }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // App 退到后台：前台浮层不可见了，自动转后台（否则没有 FGS 保活）
@@ -86,6 +94,55 @@ fun AppRoot(vfsViewModel: VfsViewModel = viewModel()) {
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // DEBUG 自动化：adb shell am start ... --ez open_cloud true
+    if (com.superfiles.app.BuildConfig.DEBUG) {
+        LaunchedEffect(Unit) {
+            val activity = context.findActivity()
+            if (activity?.intent?.getBooleanExtra("open_cloud", false) == true) {
+                activity.intent.removeExtra("open_cloud")
+                debugCloudSheet = true
+                showNetworkSheet = true
+            }
+            val filterKey = activity?.intent?.getStringExtra("filter_key")
+            if (!filterKey.isNullOrEmpty()) {
+                activity.intent.removeExtra("filter_key")
+                vfsViewModel.debugApplyFilter(filterKey)
+                tab = AppTab.Files
+            }
+            if (activity?.intent?.getBooleanExtra("open_cleanup", false) == true) {
+                activity.intent.removeExtra("open_cleanup")
+                showCleanupPage = true
+            }
+            val rebuildRoot = activity?.intent?.getStringExtra("rebuild_root")
+            if (!rebuildRoot.isNullOrEmpty()) {
+                activity.intent.removeExtra("rebuild_root")
+                vfsViewModel.debugRebuildMount(rebuildRoot)
+                tab = AppTab.Home
+            }
+            if (activity?.intent?.getBooleanExtra("open_index", false) == true) {
+                activity.intent.removeExtra("open_index")
+                tab = AppTab.Mine
+                showIndexPage = true
+            }
+            if (activity?.intent?.getBooleanExtra("open_localsend", false) == true) {
+                activity.intent.removeExtra("open_localsend")
+                showLocalSendPage = true
+            }
+        }
+    }
+
+    // DEBUG 自动化：adb shell am start ... --es preview_path <绝对路径>
+    if (com.superfiles.app.BuildConfig.DEBUG) {
+        LaunchedEffect(Unit) {
+            val activity = context.findActivity()
+            val path = activity?.intent?.getStringExtra("preview_path")
+            if (!path.isNullOrEmpty()) {
+                activity.intent.removeExtra("preview_path")
+                vfsViewModel.debugOpenPreview(path)
+            }
+        }
     }
 
     // 全局提示：notice/error 在任意 Tab 立即弹出（不再积压到切页时才显示）
@@ -107,14 +164,27 @@ fun AppRoot(vfsViewModel: VfsViewModel = viewModel()) {
     // 看不见的浏览器状态（子目录/其他存储根）层层吞掉，永远到不了退出层。
     BackHandler {
         when {
+            // 文档预览页是顶层整页：返回先退出预览
+            browserState.docPreview != null -> vfsViewModel.dismissDocPreview()
             // 详情页是顶层整页：返回先退出详情
             browserState.details != null -> vfsViewModel.dismissDetails()
             showTransfersPage -> showTransfersPage = false
             showFavoritesPage -> showFavoritesPage = false
             showLocalSendPage -> showLocalSendPage = false
+            showIndexPage -> showIndexPage = false
+            showCleanupPage -> showCleanupPage = false
             // 多选模式优先退出多选（不触发目录回退）
             tab == AppTab.Files && browserState.selectionMode -> vfsViewModel.clearSelection()
-            tab == AppTab.Files && browserState.filterExts.isNotEmpty() -> vfsViewModel.clearFilter()
+            tab == AppTab.Files && browserState.filterExts.isNotEmpty() -> {
+                vfsViewModel.clearFilter()
+                vfsViewModel.clearHomeEntry()
+                tab = AppTab.Home
+            }
+            tab == AppTab.Files && browserState.homeEntryRoot != null &&
+                browserState.currentId == browserState.homeEntryRoot -> {
+                vfsViewModel.clearHomeEntry()
+                tab = AppTab.Home
+            }
             tab == AppTab.Files && browserState.canGoUp -> vfsViewModel.goUp()
             tab == AppTab.Files && browserState.rootKind != BrowserRoot.AppStorage -> vfsViewModel.backToParentRoot()
             tab != AppTab.Home -> tab = AppTab.Home
@@ -132,7 +202,9 @@ fun AppRoot(vfsViewModel: VfsViewModel = viewModel()) {
     // 自适应（docs/06 §7）：横屏手机 / 平板把底部导航换成侧栏，把高度还给内容。
     val useRail = useNavigationRail()
     val showNavigation =
-        !showFavoritesPage && !showTransfersPage && !showLocalSendPage && browserState.details == null
+        !showFavoritesPage && !showTransfersPage && !showLocalSendPage && !showCleanupPage &&
+            !showIndexPage &&
+            browserState.details == null && browserState.docPreview == null
 
     Scaffold(
         containerColor = SfColors.Surface,
@@ -209,8 +281,29 @@ fun AppRoot(vfsViewModel: VfsViewModel = viewModel()) {
                 }
             }
             Box(modifier = Modifier.weight(1f).fillMaxSize()) {
+                val docPreview = browserState.docPreview
                 val details = browserState.details
-                if (details != null) {
+                if (docPreview != null) {
+                    // 文档预览整页：PDF 全页渲染；图片/视频/文本走内置预览；其余文档为占位页 + 外部打开
+                    val ext = docPreview.name.substringAfterLast('.', "").lowercase()
+                    when {
+                        ext == "pdf" -> PdfPreviewPage(
+                            viewModel = vfsViewModel,
+                            entry = docPreview,
+                            onBack = vfsViewModel::dismissDocPreview,
+                        )
+                        isPreviewable(docPreview) -> PreviewPage(
+                            viewModel = vfsViewModel,
+                            entry = docPreview,
+                            onBack = vfsViewModel::dismissDocPreview,
+                        )
+                        else -> DocPreviewPage(
+                            viewModel = vfsViewModel,
+                            entry = docPreview,
+                            onBack = vfsViewModel::dismissDocPreview,
+                        )
+                    }
+                } else if (details != null) {
                     // 文件详情整页（design/figma/04，M1 批量/分享/传输的汇聚入口）
                     DetailsPage(
                         viewModel = vfsViewModel,
@@ -245,11 +338,23 @@ fun AppRoot(vfsViewModel: VfsViewModel = viewModel()) {
                             tab = AppTab.Files
                         },
                     )
+                } else if (showCleanupPage) {
+                    StorageCleanupScreen(
+                        viewModel = vfsViewModel,
+                        onBack = { showCleanupPage = false },
+                    )
+                } else if (showIndexPage) {
+                    IndexManageScreen(
+                        viewModel = vfsViewModel,
+                        onBack = { showIndexPage = false },
+                    )
                 } else when (tab) {
                     AppTab.Home ->
                         HomeScreen(
                             recent = browserState.recent,
                             scanFraction = browserState.scanFraction,
+                            scanLabel = browserState.scanLabel,
+                            onOpenIndexManage = { showIndexPage = true },
                             scanDone = browserState.scanDone,
                             onSearch = {
                                 vfsViewModel.requestSearchFocus()
@@ -260,26 +365,39 @@ fun AppRoot(vfsViewModel: VfsViewModel = viewModel()) {
                                 vfsViewModel.applyTypeFilter(folder.name, folder.exts)
                                 tab = AppTab.Files
                             },
-                            // 统一打开入口：本地直开；网络挂载条目异步下载后打开
+                            // 统一打开入口：可预览文档进应用内预览；其余外部打开
                             onOpenRecent = { item ->
-                                openEntryFile(context, vfsViewModel, item.entry, chooser = false)
+                                openEntryPrimary(context, vfsViewModel, item.entry)
                             },
                             onRecentActions = { item -> vfsViewModel.showActions(item.entry) },
                             onShareEntries = { entries -> vfsViewModel.startShare(entries) },
                             onOpenSharedStorage = {
                                 vfsViewModel.switchRoot(BrowserRoot.SharedStorage)
+                                vfsViewModel.markHomeEntry()
                                 tab = AppTab.Files
                             },
                             networkCount = browserState.networkMounts.size,
-                            onOpenNetwork = { showNetworkSheet = true },
+                            onOpenNetwork = {
+                                networkEditTarget = null
+                                showNetworkSheet = true
+                            },
                             networkMounts = browserState.networkMounts,
                             onOpenMount = { mount ->
                                 vfsViewModel.openMount(mount)
+                                vfsViewModel.markHomeEntry()
                                 tab = AppTab.Files
                             },
                             onDeleteMount = { mount -> vfsViewModel.removeNetworkMount(mount) },
+                            onEditMount = { mount ->
+                                networkEditTarget = mount
+                                showNetworkSheet = true
+                            },
                             onDeleteEntry = { entry -> vfsViewModel.deleteEntries(listOf(entry)) },
-                            onManageNetwork = { showNetworkSheet = true },
+                            onManageNetwork = {
+                                networkEditTarget = null
+                                showNetworkSheet = true
+                            },
+                            onReorderMounts = vfsViewModel::reorderNetworkMounts,
                             favorites = remember(browserState.favorites, browserState.favoriteLocations) {
                                 browserState.favorites.map { fav ->
                                     FavoriteItem(
@@ -291,24 +409,38 @@ fun AppRoot(vfsViewModel: VfsViewModel = viewModel()) {
                             onOpenFavoriteItem = { item ->
                                 if (item.entry.kind == com.superfiles.core.EntryKind.DIRECTORY) {
                                     vfsViewModel.openEntry(item.entry)
+                                    vfsViewModel.markHomeEntry()
                                     tab = AppTab.Files
                                 } else {
-                                    openEntryFile(context, vfsViewModel, item.entry, chooser = false)
+                                    openEntryPrimary(context, vfsViewModel, item.entry)
                                 }
                             },
                             onManageFavorites = { showFavoritesPage = true },
+                            onReorderFavorites = vfsViewModel::reorderFavorites,
                             nickname = browserState.userNickname,
                             avatarChar = browserState.userAvatarChar,
                             onOpenAppStorage = {
                                 vfsViewModel.switchRoot(BrowserRoot.AppStorage)
+                                vfsViewModel.markHomeEntry()
+                                tab = AppTab.Files
+                            },
+                            onCleanup = { showCleanupPage = true },
+                            categoryStats = browserState.categoryStats,
+                            onOpenCategory = { label, exts ->
+                                vfsViewModel.applyTypeFilter(label, exts)
                                 tab = AppTab.Files
                             },
                         )
-                    AppTab.Files -> FileBrowserScreen(viewModel = vfsViewModel)
+                    AppTab.Files -> FileBrowserScreen(
+                        viewModel = vfsViewModel,
+                        scrollStates = fileScrollStates,
+                    )
                     AppTab.Mine -> MineScreen(
                         viewModel = vfsViewModel,
                         onOpenTransfers = { showTransfersPage = true },
                         onOpenLocalSend = { showLocalSendPage = true },
+                        onOpenStorageCleanup = { showCleanupPage = true },
+                        onOpenIndexManage = { showIndexPage = true },
                     )
                 }
                 // 「⋯」操作面板全局宿主：首页最近列表与文件页共用同一套菜单/弹窗
@@ -323,9 +455,16 @@ fun AppRoot(vfsViewModel: VfsViewModel = viewModel()) {
     if (showNetworkSheet) {
         NetworkSheet(
             viewModel = vfsViewModel,
-            onDismiss = { showNetworkSheet = false },
+            initialEdit = networkEditTarget,
+            startInCloud = debugCloudSheet,
+            onDismiss = {
+                showNetworkSheet = false
+                debugCloudSheet = false
+                networkEditTarget = null
+            },
             onBrowse = { mount ->
                 showNetworkSheet = false
+                networkEditTarget = null
                 vfsViewModel.openMount(mount)
                 tab = AppTab.Files
             },

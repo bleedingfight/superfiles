@@ -18,6 +18,8 @@ import com.superfiles.app.search.SearchQuery
 import com.superfiles.app.search.SortMode
 import com.superfiles.core.RecentOpen
 import com.superfiles.app.security.KeystoreCrypto
+import com.superfiles.app.ui.isPreviewable
+import com.superfiles.app.ui.openFileDefault
 import com.superfiles.core.SfException
 import com.superfiles.core.SuperFiles
 import com.superfiles.core.TransferSnapshot
@@ -31,10 +33,58 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+
+/** 首页 5 类聚合的定义（扩展名与鸿蒙端保持一致）。 */
+private val CATEGORY_DEFS: List<Triple<String, Int, Set<String>>> = listOf(
+    Triple(
+        "image", R.string.s_cat_image,
+        setOf(
+            "jpg", "jpeg", "png", "heic", "heif", "webp", "gif", "bmp",
+            "dng", "cr2", "cr3", "nef", "arw", "raf", "orf", "rw2", "raw",
+        ),
+    ),
+    Triple(
+        "video", R.string.s_cat_video,
+        setOf("mp4", "mkv", "mov", "webm", "m4v", "avi", "ts", "3gp", "wmv", "flv"),
+    ),
+    Triple(
+        "doc", R.string.s_cat_doc,
+        setOf("pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "md", "txt", "csv", "epub"),
+    ),
+    Triple(
+        "audio", R.string.s_cat_audio,
+        setOf("mp3", "flac", "wav", "aac", "ogg", "m4a", "wma", "ape"),
+    ),
+    Triple(
+        "archive", R.string.s_cat_archive,
+        setOf("zip", "rar", "7z", "tar", "gz", "bz2", "xz", "tgz"),
+    ),
+)
+
+
+    /** 近邻传输收发条目：「已接收」清单 + 传输中心「近邻传输」分组共用。 */
+    data class LocalSendReceived(
+        val name: String,
+        val sizeBytes: Long,
+        val atMs: Long,
+        /** true=收到 / false=发出（发出项仅进传输中心的近邻分组）。 */
+        val incoming: Boolean = true,
+        val peer: String? = null,
+        /**
+         * 单调递增序号（仅内存态，不持久化）：同刻同名条目 name/atMs/size 可能全部
+         * 相同，列表 key 与「左滑移除单条」靠它精确定位，不会误伤兄弟条目。
+         */
+        val seq: Long = nextSeq++,
+    ) {
+        companion object {
+            private var nextSeq = 0L
+        }
+    }
 
 data class BrowserState(
     val rootId: String = "",
@@ -42,7 +92,11 @@ data class BrowserState(
     val title: String = "",
     val entries: List<Entry> = emptyList(),
     /** 搜索结果/类型筛选结果的显示位置（IO 线程预计算）。 */
-    val entryLocations: Map<String, String> = emptyMap(),
+    /**
+     * 结果行「所在位置」解析器：只对可见行求值。上万条筛选结果不预先算路径，
+     * 否则一次点击要额外花上百毫秒。
+     */
+    val locationProvider: ((Entry) -> String)? = null,
     val capabilities: Capabilities? = null,
     val canGoUp: Boolean = false,
     val loading: Boolean = false,
@@ -60,6 +114,18 @@ data class BrowserState(
     val compress: CompressState? = null,
     /** 文件详情弹窗内容（null = 关闭）。 */
     val details: EntryDetails? = null,
+    /** 文档预览页（PDF 应用内渲染；doc/xls/ppt 系为占位页 + 外部打开入口；null = 关闭）。 */
+    val docPreview: Entry? = null,
+    /** 从首页进入文件页时的落脚目录；返回时直接回首页，而不是逐级上跳。 */
+    val homeEntryRoot: String? = null,
+    /** 首页分类聚合的实时数量（来自索引）。 */
+    val categoryStats: List<CategoryStat> = emptyList(),
+    /** 索引管理页：本地存储 + 已挂载网络存储的索引状态。 */
+    val indexTargets: List<IndexTarget> = emptyList(),
+    /** 当前正在建立索引的存储名（首页只显示百分比，索引管理页显示名字）。 */
+    val scanLabel: String? = null,
+    /** 当前扫描任务的根 id（索引管理页用它把进度标到对应存储行上）。 */
+    val scanTargetId: String? = null,
     /** 最近打开（首页「最近打开」数据源，按打开时间倒序）。 */
     val recent: List<RecentOpen> = emptyList(),
     /** 「⋯」操作面板的目标（null = 关闭；任何页面共用同一套菜单）。 */
@@ -117,6 +183,12 @@ data class BrowserState(
     val localSendRunning: Boolean = false,
     val localSendInfo: com.superfiles.core.LocalSendInfo? = null,
     val localSendPeers: List<com.superfiles.core.LocalSendPeer> = emptyList(),
+    /** 近邻传输「已接收」清单（最新在前，会话内有效；行点击直达目录）。 */
+    val localSendReceived: List<LocalSendReceived> = emptyList(),
+    /** 近邻传输收发流水（传输中心「近邻传输」分组，含发出方向与对端名）。 */
+    val localSendRecords: List<LocalSendReceived> = emptyList(),
+    /** 无传输活动自动关闭（秒，0=永不）。 */
+    val localSendIdleSecs: Long = 300L,
     val localSendErrors: List<String> = emptyList(),
     /** 最近一次发送失败原因（null = 无；用于发送面板内联展示）。 */
     val localSendSendError: String? = null,
@@ -143,6 +215,10 @@ data class NetworkMountConfig(
     val share: String = "",
     val username: String = "",
     val password: String = "",
+    /** S3 专用：region / 路径寻址 / 临时会话 token。 */
+    val region: String = "",
+    val pathStyle: Boolean = false,
+    val sessionToken: String = "",
 )
 
 /** 一条网络存储的运行时状态。 */
@@ -153,7 +229,35 @@ data class NetworkMountStatus(
 )
 
 /** 局域网扫描发现的 SMB 主机；shares 为空表示需凭据。 */
-data class SmbHostInfo(val host: String, val shares: List<String>)
+data class SmbHostInfo(val name: String, val host: String, val shares: List<String>)
+
+/** 索引管理页的一行：一个存储（本地或网络挂载）及其索引状态。 */
+data class IndexTarget(
+    val id: String,
+    val name: String,
+    val kind: String,
+    val entries: Long,
+    val isLocal: Boolean,
+    val mount: NetworkMountStatus? = null,
+) {
+    val indexed: Boolean get() = entries > 0
+}
+
+/** 存储清理项：应用存储下的一级文件/目录，按大小降序展示。 */
+/** 首页分类聚合：图片/视频/文档/音频/压缩包。 */
+data class CategoryStat(
+    val key: String,
+    val label: String,
+    val exts: Set<String>,
+    val count: Long,
+)
+
+data class CleanupItem(
+    val path: String,
+    val name: String,
+    val size: Long,
+    val isDir: Boolean,
+)
 
 /** 复制/移动的统一目标节点（根列表或子目录）。 */
 data class DestNode(
@@ -236,9 +340,21 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
     private var localSendPollJob: kotlinx.coroutines.Job? = null
     private var localSendMulticastLock: android.net.wifi.WifiManager.MulticastLock? = null
     private var localSendLastFileCount: Int = -1
+    /** 接收到账对账：上轮接收目录内容的名字集合 + 是否已建立基线。 */
+    private val localSendSeenNames: MutableSet<String> = mutableSetOf()
+    private var localSendBaselineReady = false
 
     private val prefs =
         application.getSharedPreferences("ui", android.content.Context.MODE_PRIVATE)
+
+    /**
+     * 待扫描队列（id + 是否跳过冷却）；去重，按请求顺序串行执行。
+     * 必须声明在 `init` 之前：`init` 会调用 [indexAccessibleRoots]。
+     */
+    private val scanQueue = ArrayDeque<ScanJob>()
+
+    /** 扫描过程中分类计数的刷新节流（避免每个目录都查 5 次 count）。 */
+    private var lastCategoryRefreshAt = 0L
 
     /**
      * 网络存储凭据加密：Android Keystore 托管 AES-256-GCM 密钥（平台原生，无第三方依赖），
@@ -258,6 +374,7 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         BrowserState(
             rootId = core.rootId(),
             showHidden = prefs.getBoolean(KEY_SHOW_HIDDEN, false),
+            localSendIdleSecs = prefs.getLong(KEY_LS_IDLE_SECS, 300L),
             // 上次生命周期曾完成过扫描 → 冷启动直接展示绿色 ✓
             // （冷却期内本轮不重新扫描，但"已更新"状态应跨启动保留；
             //  兼容旧版本只写过 scan_at_* 冷却键、没有 scan_done 标志的情况）
@@ -270,6 +387,14 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         ),
     )
     val state = _state.asStateFlow()
+
+    /** 存储清理：应用存储一级条目（按大小降序）+ 扫描中标志。 */
+    private val _cleanupItems = MutableStateFlow<List<CleanupItem>>(emptyList())
+    val cleanupItems = _cleanupItems.asStateFlow()
+    private val _cleanupScanning = MutableStateFlow(false)
+    val cleanupScanning = _cleanupScanning.asStateFlow()
+    private val _cleanupPath = MutableStateFlow<String?>(null)
+    val cleanupPath = _cleanupPath.asStateFlow()
 
     /** 隐藏文件过滤：Entry.hidden 或 . 开头都算（含目录）。 */
     private fun visible(entries: List<Entry>): List<Entry> =
@@ -284,6 +409,8 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean(KEY_SHOW_HIDDEN, show).apply()
         _state.update { it.copy(showHidden = show) }
         refreshCurrent()
+        // 分类数量与「显示隐藏文件」开关保持一致（隐藏文件默认不算）。
+        refreshCategoryStats()
     }
 
     private val history = ArrayDeque<String>()
@@ -292,6 +419,10 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         // 应用内事件日志（环形文件，随诊断包导出）
         SfLog.init(application)
         SfLog.i("App start; externalStorageManager=${android.os.Environment.isExternalStorageManager()}")
+        // LocalSend 组网深链（系统深链 / App 内扫码共用总线）
+        viewModelScope.launch {
+            LocalSendLinkBus.links.collect { link -> registerFromLocalSendLink(link) }
+        }
         // 远端流式 Provider 共享同一个内核实例（挂载都在 appCore 上）
         com.superfiles.app.stream.RemoteFileProvider.appCore = appCore
         migratePlaintextMounts() // 旧版明文凭据 → 加密存储（一次性）
@@ -314,6 +445,24 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         loadFavorites()
         _state.update { it.copy(indexPins = loadPins()) }
         restoreNetworkMounts()
+        // 索引所有程序可访问的本地目录；网络存储只在用户指定后索引。
+        indexAccessibleRoots()
+        refreshCategoryStats()
+        // 云盘 OAuth 授权完成（深链回调 → token 已保存）→ 挂载
+        viewModelScope.launch {
+            com.superfiles.app.cloud.CloudAuthBus.authDone.collect { providerId ->
+                providerId?.let { mountCloudProvider(it) }
+            }
+        }
+        // 云盘授权失败（loopback 回调里的错误）→ 顶部提示
+        viewModelScope.launch {
+            com.superfiles.app.cloud.CloudAuthBus.authError.collect { message ->
+                message?.let {
+                    notice(it)
+                    com.superfiles.app.cloud.CloudAuthBus.authError.value = null
+                }
+            }
+        }
         startTransferPolling()
         refreshResumable()
         // 网络挂载连上后再刷新索引位置（1s 缓冲，不阻塞启动）
@@ -332,7 +481,13 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                 runCatching { appCore.favorites(200u) }.getOrNull()?.let { list += it }
                 sharedCore?.let { c -> runCatching { c.favorites(200u) }.getOrNull()?.let { list += it } }
                 systemCore?.let { c -> runCatching { c.favorites(200u) }.getOrNull()?.let { list += it } }
-                val sorted = list.distinctBy { it.entry.id }.sortedByDescending { it.addedMs }
+                val order = loadFavoriteOrder()
+                val rank = order.withIndex().associate { (i, id) -> id to i }
+                val sorted = list.distinctBy { it.entry.id }
+                    .sortedWith(
+                        compareBy<FavoriteEntry> { rank[it.entry.id] ?: Int.MAX_VALUE }
+                            .thenByDescending { it.addedMs },
+                    )
                 // 主线程只读缓存：displayPath 是阻塞 FFI，必须在这里算完。
                 sorted to sorted.associate { it.entry.id to locationOf(it.entry) }
             }
@@ -345,6 +500,26 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
+    }
+
+    /** 收藏长按拖动排序：重排内存列表并把 id 顺序落盘。 */
+    fun reorderFavorites(from: Int, to: Int) {
+        val list = _state.value.favorites.toMutableList()
+        if (from !in list.indices || to !in list.indices || from == to) return
+        val item = list.removeAt(from)
+        list.add(to, item)
+        _state.update { it.copy(favorites = list) }
+        saveFavoriteOrder(list.map { it.entry.id })
+    }
+
+    private fun loadFavoriteOrder(): List<String> = runCatching {
+        val raw = prefs.getString("favorite_order", null) ?: return emptyList()
+        val arr = org.json.JSONArray(raw)
+        (0 until arr.length()).map { arr.getString(it) }
+    }.getOrDefault(emptyList())
+
+    private fun saveFavoriteOrder(ids: List<String>) {
+        prefs.edit().putString("favorite_order", org.json.JSONArray(ids).toString()).apply()
     }
 
     fun toggleFavorite(entry: Entry) {
@@ -495,6 +670,74 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
             cfg.username,
             cfg.password,
         )
+        "gdrive" -> {
+            val provider = com.superfiles.app.cloud.CloudProviders.byId("google_drive")
+                ?: error("google_drive")
+            val client = provider.client ?: error("google_drive not configured")
+            val token = com.superfiles.app.cloud.CloudAuthManager.loadToken(getApplication(), "google_drive")
+                ?: error("google_drive not authorized")
+            vfsCore.mountGoogleDrive(
+                cfg.name,
+                token.accessToken,
+                token.refreshToken ?: "",
+                client.clientId,
+                client.clientSecret ?: "",
+            )
+        }
+        "dropbox" -> {
+            val provider = com.superfiles.app.cloud.CloudProviders.byId("dropbox")
+                ?: error("dropbox")
+            val client = provider.client ?: error("dropbox not configured")
+            val token = com.superfiles.app.cloud.CloudAuthManager.loadToken(getApplication(), "dropbox")
+                ?: error("dropbox not authorized")
+            vfsCore.mountDropbox(
+                cfg.name,
+                token.accessToken,
+                token.refreshToken ?: "",
+                client.clientId,
+                client.clientSecret ?: "",
+            )
+        }
+        "onedrive" -> {
+            val provider = com.superfiles.app.cloud.CloudProviders.byId("onedrive")
+                ?: error("onedrive")
+            val client = provider.client ?: error("onedrive not configured")
+            val token = com.superfiles.app.cloud.CloudAuthManager.loadToken(getApplication(), "onedrive")
+                ?: error("onedrive not authorized")
+            vfsCore.mountCloud(
+                "onedrive",
+                cfg.name,
+                token.accessToken,
+                token.refreshToken ?: "",
+                client.clientId,
+                client.clientSecret ?: "",
+            )
+        }
+        "s3" -> vfsCore.mountS3(
+            cfg.name,
+            cfg.host,
+            cfg.region,
+            cfg.share,
+            cfg.username,
+            cfg.password,
+            cfg.sessionToken,
+            cfg.pathStyle,
+        )
+        "pan115" -> {
+            val provider = com.superfiles.app.cloud.CloudProviders.byId("pan115")
+                ?: error("pan115")
+            val client = provider.client ?: error("pan115 not configured")
+            val token = com.superfiles.app.cloud.CloudAuthManager.loadToken(getApplication(), "pan115")
+                ?: error("pan115 not authorized")
+            vfsCore.mountCloud(
+                "115",
+                cfg.name,
+                token.accessToken,
+                token.refreshToken ?: "",
+                client.clientId,
+                client.clientSecret ?: "",
+            )
+        }
         else -> error(L10n.t(R.string.s_fcc1a15a43, (cfg.protocol)))
     }
 
@@ -502,7 +745,7 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
     private fun restoreNetworkMounts() {
         val configs = loadMountConfigs()
         if (configs.isEmpty()) return
-        _state.update { it.copy(networkMounts = configs.map { c -> NetworkMountStatus(c) }) }
+        _state.update { it.copy(networkMounts = dedupeMounts(configs.map { c -> NetworkMountStatus(c) })) }
         viewModelScope.launch {
             val mountCore = openSystem() ?: appCore
             val statuses = withContext(Dispatchers.IO) {
@@ -520,7 +763,7 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                         )
                 }
             }
-            _state.update { it.copy(networkMounts = statuses) }
+            _state.update { it.copy(networkMounts = dedupeMounts(statuses)) }
             // 网络/系统根的收藏行存在 systemCore 的索引里，而 init 里
             // loadFavorites() 早于挂载恢复（当时 systemCore 可能还没打开）。
             // 挂载连上后必须重载一次，否则重启后首页收藏里看不到它们。
@@ -555,12 +798,14 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
             }
             val results = withContext(Dispatchers.IO) {
                 reachable.map { h ->
+                    // NetBIOS 主机名（NBNS UDP 137）；拿不到再兜底，IP 在行下方单独展示
+                    val name = runCatching { appCore.smbNetbiosName(h) }.getOrNull() ?: "SMB 服务器"
                     val shares = runCatching {
                         withTimeout(6000) {
                             appCore.smbListShares(h, 445u, "", "")
                         }
                     }.getOrNull()
-                    SmbHostInfo(h, shares ?: emptyList())
+                    SmbHostInfo(name, h, shares ?: emptyList())
                 }
             }
             onResult(
@@ -666,8 +911,10 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     _state.update { s ->
                         s.copy(
-                            networkMounts = s.networkMounts.filterNot { it.config.name == cfg.name } +
-                                NetworkMountStatus(cfg, rootId = rootId),
+                            networkMounts = dedupeMounts(
+                                s.networkMounts.filterNot { it.config.name == cfg.name } +
+                                    NetworkMountStatus(cfg, rootId = rootId),
+                            ),
                         )
                     }
                     notice(L10n.t(R.string.s_b4d8424037, (cfg.name)))
@@ -677,6 +924,26 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                     android.util.Log.e("SuperFiles", "mount failed", it)
                     onResult(false, friendlyError(it))
                 }
+        }
+    }
+
+    /** 云盘 OAuth 授权完成后的挂载：从 CloudAuthManager 读 token，构造配置并挂载。 */
+    private fun mountCloudProvider(providerId: String) {
+        val provider = com.superfiles.app.cloud.CloudProviders.byId(providerId) ?: return
+        val protocol = when (providerId) {
+            "google_drive" -> "gdrive"
+            "dropbox" -> "dropbox"
+            "onedrive" -> "onedrive"
+            "pan115" -> "pan115"
+            else -> return
+        }
+        val cfg = NetworkMountConfig(
+            name = L10n.t(provider.displayNameRes),
+            protocol = protocol,
+            host = providerId,
+        )
+        addNetworkMount(cfg) { ok, err ->
+            if (!ok) notice(err ?: "cloud mount failed")
         }
     }
 
@@ -711,6 +978,93 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 .onFailure { notice(L10n.t(R.string.s_0997a3c67f, (friendlyError(it)))) }
         }
+    }
+
+    /**
+     * 编辑网络存储（名称/地址/凭据）：卸载旧挂载 → 以新配置重挂载并持久化。
+     * 正在浏览该连接时，编辑成功后自动跟随到新的挂载根。
+     */
+    fun updateNetworkMount(
+        status: NetworkMountStatus,
+        cfg: NetworkMountConfig,
+        onResult: (Boolean, String?) -> Unit,
+    ) {
+        val oldName = status.config.name
+        val oldRoot = status.rootId
+        viewModelScope.launch {
+            val mountCore = openSystem() ?: appCore
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    oldRoot?.let { runCatching { mountCore.unmount(it) } }
+                    mountOn(mountCore, cfg)
+                }
+            }
+            result
+                .onSuccess { rootId ->
+                    saveMountConfigs(loadMountConfigs().map { if (it.name == oldName) cfg else it })
+                    if (cfg.protocol == "smb" && cfg.share.isNotBlank()) {
+                        recordShareHistory(cfg.host, cfg.share)
+                    }
+                    _state.update { s ->
+                        s.copy(
+                            networkMounts = s.networkMounts.map {
+                                if (it.config.name == oldName) NetworkMountStatus(cfg, rootId) else it
+                            },
+                        )
+                    }
+                    val current = _state.value.currentId
+                    if (oldRoot != null && (current == oldRoot || current.startsWith("$oldRoot/"))) {
+                        history.clear()
+                        load(rootId)
+                    }
+                    notice(L10n.t(R.string.s_6a62bcae24, (cfg.name)))
+                    onResult(true, null)
+                }
+                .onFailure { err ->
+                    SfLog.e("update mount failed: ${cfg.name}", err)
+                    // 编辑失败：尽量恢复旧连接，避免原挂载被卸载后从列表消失
+                    val restored = oldRoot?.let {
+                        withContext(Dispatchers.IO) {
+                            runCatching { mountOn(mountCore, status.config) }.getOrNull()
+                        }
+                    }
+                    _state.update { s ->
+                        s.copy(
+                            networkMounts = s.networkMounts.map {
+                                if (it.config.name == oldName) {
+                                    if (restored != null) {
+                                        NetworkMountStatus(status.config, restored)
+                                    } else {
+                                        NetworkMountStatus(status.config, error = friendlyError(err))
+                                    }
+                                } else {
+                                    it
+                                }
+                            },
+                        )
+                    }
+                    if (restored != null) {
+                        oldRoot?.let { previous ->
+                            val current = _state.value.currentId
+                            if (current == previous || current.startsWith("$previous/")) {
+                                history.clear()
+                                load(restored)
+                            }
+                        }
+                    }
+                    onResult(false, friendlyError(err))
+                }
+        }
+    }
+
+    /** 长按拖动排序：重排内存列表并持久化（启动重连按此顺序）。 */
+    fun reorderNetworkMounts(from: Int, to: Int) {
+        val list = _state.value.networkMounts.toMutableList()
+        if (from !in list.indices || to !in list.indices || from == to) return
+        val item = list.removeAt(from)
+        list.add(to, item)
+        _state.update { it.copy(networkMounts = list) }
+        saveMountConfigs(list.map { it.config })
     }
 
     fun removeNetworkMount(status: NetworkMountStatus) {
@@ -776,6 +1130,9 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                     put("share", c.share)
                     put("username", c.username)
                     put("password", c.password)
+                    put("region", c.region)
+                    put("pathStyle", c.pathStyle)
+                    put("sessionToken", c.sessionToken)
                 },
             )
         }
@@ -784,11 +1141,17 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ---- 后台索引扫描（进目录即触发；与前台操作互不阻塞，扫描串行，最新请求排队） ----
+    // ---- 后台索引扫描（进目录即触发；与前台操作互不阻塞，扫描串行排队） ----
 
     private var scanning = false
-    private var pendingScanId: String? = null
-    private var pendingScanForce = false
+
+    /** 扫描任务：`id` 可以是本地目录，也可以是网络挂载根（remote 仅手动触发）。 */
+    private data class ScanJob(
+        val id: String,
+        val force: Boolean,
+        val remote: Boolean = false,
+        val label: String? = null,
+    )
 
     /**
      * 自动扫描冷却（10 分钟，持久化）：避免反复进出同一目录、以及重启应用时
@@ -797,38 +1160,113 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
     private fun scanCooldownKey(id: String) = "scan_at_$id"
 
     /**
-     * 异步刷新索引：进度经 state.scanFraction 回流，完成后 scanDone=true（绿色 ✓）。
-     * `force=true`（FAB 手动）忽略冷却。
+     * `id` 属于哪个内核。索引必须写回它自己的库：共享存储的路径不能拿
+     * appCore 去 list（会被 jail 拒绝），反之亦然。
      */
-    fun scanInBackground(id: String, force: Boolean = false) {
-        val now = System.currentTimeMillis()
-        if (!force && now - prefs.getLong(scanCooldownKey(id), 0L) < 10 * 60 * 1000L) return
+    private fun coreOwning(id: String): SuperFiles {
+        if (!id.startsWith("/")) return openSystem() ?: appCore
+        val sandbox = File(getApplication<Application>().filesDir, "storage").absolutePath
+        val shared = android.os.Environment.getExternalStorageDirectory().absolutePath
+        return when {
+            id == sandbox || id.startsWith("$sandbox/") -> appCore
+            id == shared || id.startsWith("$shared/") -> sharedCore ?: openShared() ?: appCore
+            else -> systemCore ?: core
+        }
+    }
+
+    /**
+     * 索引所有程序可访问的本地目录：应用沙盒 + 共享存储。
+     * 网络存储（WebDAV / SMB / S3 / 云盘）不在这里自动索引——只有用户显式
+     * 添加「索引位置」之后才扫描（见 [refreshIndexPins]）。
+     */
+    fun indexAccessibleRoots(force: Boolean = false, label: String? = null) {
+        scanInBackground(appCore.rootId(), force, label)
+        sharedCore?.let { scanInBackground(it.rootId(), force, label) }
+    }
+
+    /**
+     * 异步刷新索引：进度经 state.scanFraction 回流，完成后 scanDone=true（绿色 ✓）。
+     * `force=true`（手动）忽略冷却。
+     */
+    fun scanInBackground(id: String, force: Boolean = false, label: String? = null) {
+        // 远端 id 形如 `webdav://…`：绝不自动索引（用户在索引管理里手动建立）
+        if (!id.startsWith("/")) return
+        enqueueScan(ScanJob(id, force, label = label))
+    }
+
+    /**
+     * 索引管理：为某个网络存储建立/重建索引。与本地扫描共用同一条串行队列：
+     * 前台显示进度；离开页面/切到首页不打断（任务跑在 ViewModel 作用域）。
+     */
+    fun indexMountInBackground(rootId: String, label: String) {
+        enqueueScan(ScanJob(rootId, force = true, remote = true, label = label))
+    }
+
+    private fun enqueueScan(job: ScanJob) {
         if (scanning) {
-            pendingScanId = id
-            pendingScanForce = force
+            if (scanQueue.none { it.id == job.id }) scanQueue.addLast(job)
             return
         }
+        val now = System.currentTimeMillis()
+        if (!job.force && !job.remote &&
+            now - prefs.getLong(scanCooldownKey(job.id), 0L) < 10 * 60 * 1000L
+        ) {
+            return
+        }
+        startScan(job)
+    }
+
+    private fun startScan(job: ScanJob) {
+        val id = job.id
         scanning = true
-        prefs.edit().putLong(scanCooldownKey(id), now).apply()
-        _state.update { it.copy(scanFraction = 0f, scanDone = false) }
+        val scanT0 = android.os.SystemClock.elapsedRealtime()
+        android.util.Log.d("SuperFiles", "scan start $id")
+        prefs.edit().putLong(scanCooldownKey(id), System.currentTimeMillis()).apply()
+        _state.update {
+            it.copy(
+                scanFraction = 0f,
+                scanDone = false,
+                scanLabel = job.label,
+                scanTargetId = job.id,
+            )
+        }
         viewModelScope.launch {
+            val target = coreOwning(id)
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    core.indexDirWithProgress(
-                        id,
-                        object : IndexProgressListener {
-                            override fun onProgress(directories: ULong, entries: ULong, fraction: Float) {
-                                _state.update {
-                                    it.copy(scanFraction = fraction.coerceIn(0f, 0.99f))
+                    val listener = object : IndexProgressListener {
+                        override fun onProgress(directories: ULong, entries: ULong, fraction: Float) {
+                            _state.update {
+                                it.copy(scanFraction = fraction.coerceIn(0f, 0.99f))
+                            }
+                            // 本地扫描期间让首页分类数字跟着涨（最多 2s 刷一次）；
+                            // 网络索引不影响本地分类计数，跳过。
+                            if (!job.remote) {
+                                val now = android.os.SystemClock.elapsedRealtime()
+                                if (now - lastCategoryRefreshAt >= 2_000) {
+                                    lastCategoryRefreshAt = now
+                                    refreshCategoryStats()
                                 }
                             }
+                        }
 
-                            override fun onFinished(total: ULong) = Unit
-                        },
-                    )
+                        override fun onFinished(total: ULong) = Unit
+                    }
+                    // 手动「重建」= 跳过 mtime 增量判断，整棵重新列举；
+                    // 自动扫描（进目录/启动）仍然只扫变化的部分。
+                    if (job.force) {
+                        target.indexDirFullWithProgress(id, listener)
+                    } else {
+                        target.indexDirWithProgress(id, listener)
+                    }
                 }
             }
             scanning = false
+            android.util.Log.d(
+                "SuperFiles",
+                "scan done $id in ${android.os.SystemClock.elapsedRealtime() - scanT0}ms -> " +
+                    result.getOrNull().toString(),
+            )
             result
                 .onSuccess { total ->
                     prefs.edit().putBoolean(KEY_SCAN_DONE, true).apply()
@@ -836,19 +1274,31 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                         it.copy(
                             scanFraction = null,
                             scanDone = true,
+                            scanLabel = null,
+                            scanTargetId = null,
                             indexedCount = total.toLong(),
                         )
                     }
+                    refreshCategoryStats()
+                    refreshIndexTargets()
                 }
                 .onFailure {
-                    _state.update { it.copy(scanFraction = null) }
+                    _state.update {
+                        it.copy(scanFraction = null, scanLabel = null, scanTargetId = null)
+                    }
                     if (it !is SfException.Cancelled) report(it)
                 }
-            // 扫描期间又有新目录进入 → 用最新请求继续（串行，不并发抢 IO）
-            pendingScanId?.let { next ->
-                pendingScanId = null
-                scanInBackground(next, force = pendingScanForce)
-                pendingScanForce = false
+            // 队列里的下一个（串行，不并发抢 IO/数据库）
+            while (scanQueue.isNotEmpty()) {
+                val next = scanQueue.removeFirst()
+                val now = System.currentTimeMillis()
+                if (!next.force && !next.remote &&
+                    now - prefs.getLong(scanCooldownKey(next.id), 0L) < 10 * 60 * 1000L
+                ) {
+                    continue
+                }
+                startScan(next)
+                return@launch
             }
         }
     }
@@ -1042,16 +1492,85 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
      * 返回相对所属存储根的路径（如 `工作资料/山屿品牌`），根下直放返回 `/`。
      * display_path 是纯字符串运算（无 IO），可在组合期安全调用。
      */
+    /**
+     * 结果行「所在位置」：数据源 · 相对目录。用户据此判断文件归属来决定操作——
+     * 例如 SMB/WebDAV 上的大视频「先拷到本地再播」比流播流畅。
+     * - 网络/云盘 id：`SCHEME · 挂载名 · 相对路径`（host/首级 share 折叠进挂载名）
+     * - 本地路径：按沙盒 / 共享 / 全盘给出存储名，相对路径沿用中间省略压缩
+     * - parent 为空（根）回退 "/"
+     */
     fun locationOf(entry: Entry): String {
-        val parentId = entry.parent ?: return "/"
-        val path = core.displayPath(parentId)
-        val roots = listOf(
-            File(getApplication<Application>().filesDir, "storage").absolutePath,
-            android.os.Environment.getExternalStorageDirectory().absolutePath,
-            "/",
-        )
-        val root = roots.firstOrNull { path == it || path.startsWith("$it/") } ?: return path
-        return path.removePrefix(root).trim('/').ifEmpty { "/" }
+        val full = entry.parent?.takeIf { it.isNotEmpty() } ?: return "/"
+        if (!full.startsWith("/")) {
+            val source = sourceLabelOf(full)
+            val rel = relativePathUnderRoot(full)
+            return if (rel.isEmpty()) source else "$source · ${compressPath(rel)}"
+        }
+        val sandboxRoot = File(getApplication<Application>().filesDir, "storage").absolutePath
+        val sharedRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
+        return when {
+            full == sandboxRoot || full.startsWith("$sandboxRoot/") ->
+                L10n.t(R.string.s_99f7a465ec) + suffixAfter(sandboxRoot, full)
+            full == sharedRoot || full.startsWith("$sharedRoot/") ->
+                L10n.t(R.string.s_0d81676d53) + suffixAfter(sharedRoot, full)
+            else ->
+                L10n.t(R.string.s_5e2bb608f9) + " · ${compressPath(full)}"
+        }
+    }
+
+    /** 本地根下裁掉前缀的部分，格式化为「 · 相对路径」（根本身则只留存储名）。 */
+    private fun suffixAfter(root: String, full: String): String {
+        if (full == root) return ""
+        val rel = full.removePrefix("$root/")
+        return " · ${compressPath(rel)}"
+    }
+
+    /**
+     * 数据源名：网络 id → 「协议大写 · 挂载名」（挂载缺名回退 host）；本地路径
+     * → 沙盒「应用存储」/ 共享「内部共享存储」/ 其余「本地存储」。
+     */
+    fun sourceLabelOf(path: String): String {
+        if (path.startsWith("/")) {
+            val sandboxRoot = File(getApplication<Application>().filesDir, "storage").absolutePath
+            val sharedRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
+            return when {
+                path == sandboxRoot || path.startsWith("$sandboxRoot/") ->
+                    L10n.t(R.string.s_99f7a465ec)
+                path == sharedRoot || path.startsWith("$sharedRoot/") ->
+                    L10n.t(R.string.s_0d81676d53)
+                else -> L10n.t(R.string.s_5e2bb608f9)
+            }
+        }
+        val scheme = path.substringBefore("://", "").uppercase()
+        val rest = path.substringAfter("://", "")
+        val host = rest.substringBefore('/')
+        val share = rest.substringAfter('/', "")
+            .substringBefore('/')
+            .takeIf { it.isNotEmpty() } ?: ""
+        val mounts = _state.value.networkMounts
+        val mountName = mounts.firstOrNull { m ->
+            m.rootId?.startsWith("$scheme://", ignoreCase = true) == true &&
+                m.config.host == host &&
+                (share.isEmpty() || m.config.share.isBlank() || m.config.share == share)
+        }?.config?.name ?: host.ifEmpty { scheme }
+        return "$scheme · $mountName"
+    }
+
+    /** 网络路径折掉主机后的目录段（每级 share 保留——挂载名与 share 常重名，宁可稍重复）。 */
+    private fun relativePathUnderRoot(path: String): String {
+        val rest = path.substringAfter("://", path)
+        return rest.substringAfter('/', "")
+    }
+
+    /** 太长时中间用 … 省略，保留开头与最后一级目录（同名文件靠最后一级区分）。 */
+    private fun compressPath(full: String): String {
+        val max = 56
+        if (full.length <= max) return full
+        val headCut = full.take(18)
+        val head = headCut.substringBeforeLast('/', "")
+        val tailCut = full.takeLast(34)
+        val tail = tailCut.substringAfter('/', tailCut)
+        return if (head.isEmpty()) "…/$tail" else "$head…/$tail"
     }
 
     /** 路径 → 所属内核与根类型（沙盒 / 共享 / 全盘 / 网络）。 */
@@ -1124,26 +1643,22 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
 
             // 2) 执行（候选 + 结构化过滤 + 位置预计算，全部在 IO 线程）
             val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    val hits = executeQuery(query)
-                    val locations = hits.associate { it.id to locationOf(it) }
-                    hits to locations
-                }
+                runCatching { executeQuery(query) }
             }
             android.util.Log.d(
                 "SuperFiles",
-                "search '$rawQuery' -> ${result.getOrNull()?.first?.size ?: -1} hits in " +
+                "search '$rawQuery' -> ${result.getOrNull()?.size ?: -1} hits in " +
                     "${android.os.SystemClock.elapsedRealtime() - startedAt}ms " +
                     "(ext=${query.extensions} kinds=${query.kinds} roots=${query.roots.size})",
             )
             result
-                .onSuccess { (hits, locations) ->
+                .onSuccess { hits ->
                     val label = _state.value.filterLabel
                     _state.update {
                         it.copy(
                             loading = false,
                             entries = visible(hits),
-                            entryLocations = locations,
+                            locationProvider = { entry -> locationOf(entry) },
                             title = if (label != null) L10n.t(R.string.s_de40885484, (label), (rawQuery)) else L10n.t(R.string.s_0992ea7ba2, (rawQuery)),
                             error = null,
                             offlineCacheMs = null,
@@ -1195,7 +1710,12 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         if (name.isBlank()) return
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { core.createDir(parent, name) } }
-            result.onSuccess { load(parent) }.onFailure(::report)
+            result
+                .onSuccess {
+                    load(parent)
+                    refreshCategoryStats()
+                }
+                .onFailure(::report)
         }
     }
 
@@ -1207,6 +1727,7 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
             result
                 .onSuccess {
                     refreshCurrent()
+                    refreshCategoryStats()
                     notice(L10n.t(R.string.s_40cfaa37c2, (entry.name)))
                 }
                 .onFailure(::report)
@@ -1266,6 +1787,7 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
             }
             clearSelection()
             refreshCurrent()
+            refreshCategoryStats()
             // 删除后同步收藏/最近列表，避免已不存在的条目继续显示（滑删时尤其明显）
             loadFavorites()
             loadRecent()
@@ -1277,7 +1799,7 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** FAB 手动刷新索引（全量重扫，带进度；与后台自动扫描共用同一条串行通道）。 */
-    fun indexEverything() = scanInBackground(core.rootId(), force = true)
+    fun indexEverything() = indexAccessibleRoots(force = true)
 
     fun dismissError() {
         _state.update { it.copy(error = null) }
@@ -1332,6 +1854,9 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         return rates
     }
 
+    /** 已提示过完成的任务 id（复制/移动），用于只刷新一次分类计数。 */
+    private val completedTransferIds = mutableSetOf<String>()
+
     private fun startTransferPolling() {
         if (transferPolling) return
         transferPolling = true
@@ -1341,7 +1866,10 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                 // 空闲时 2.5s 一拍；有任务时 700ms 一拍。启动/恢复会主动插一拍，
                 // 所以不用为了「立刻出现进度」把空闲节拍调快。
                 val active = _state.value.transfers.any {
-                    it.state == TransferState.QUEUED || it.state == TransferState.RUNNING
+                    it.state == TransferState.QUEUED ||
+                        it.state == TransferState.RUNNING ||
+                        // PAUSED 仍是「正在网络上」的任务：恢复跟手/FGS 保活都不能停
+                        it.state == TransferState.PAUSED
                 }
                 kotlinx.coroutines.delay(if (active) 700 else 2500)
             }
@@ -1365,7 +1893,13 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         val fgBefore = _state.value.foregroundTransfers
         if (fgBefore.isNotEmpty()) {
             val ended = list
-                .filter { it.id in fgBefore && it.state != TransferState.QUEUED && it.state != TransferState.RUNNING }
+                .filter {
+                    it.id in fgBefore && it.state != TransferState.QUEUED &&
+                        it.state != TransferState.RUNNING &&
+                        // PAUSED 不是结束态：前台任务不会被打成 PAUSED（浮层无暂停入口），
+                        // 防御性保留，防止未来加入口后浮层被提前收掉
+                        it.state != TransferState.PAUSED
+                }
                 .map { it.id }
                 .toSet()
             if (ended.isNotEmpty()) {
@@ -1381,6 +1915,13 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         val background = list.filter { it.id !in _state.value.foregroundTransfers }
         val backgroundIds = background.map { it.id }.toSet()
         TransferService.sync(getApplication(), background, rates.filterKeys { it in backgroundIds })
+        // 有任务完成（复制/移动）→ 索引已由内核同步，这里只需刷新界面计数。
+        val newlyDone = list.filter {
+            it.state == TransferState.COMPLETED && completedTransferIds.add(it.id)
+        }
+        if (newlyDone.isNotEmpty()) {
+            refreshCategoryStats()
+        }
         // 移动完成：引擎已删源，这里只负责刷新当前目录 + 提示
         val movedDone = list.any {
             it.state == TransferState.COMPLETED && moveTaskIds.remove(it.id)
@@ -1402,6 +1943,23 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             coreOwningTransfer(id)?.let { runCatching { it.cancelTransfer(id) } }
             notice(L10n.t(R.string.s_610c06de88))
+        }
+    }
+
+    /**
+     * 左滑「暂停」：PAUSED（非终态）保留进度，可 unpause 继续或 cancel 终止。
+     * 引擎在块边界停摆，与取消同优先级——暂停中点取消立即生效。
+     */
+    fun pauseTransfer(id: String) {
+        viewModelScope.launch {
+            coreOwningTransfer(id)?.let { runCatching { it.pauseTransfer(id) } }
+        }
+    }
+
+    /** 左滑「继续」：解除 PAUSED 拨回 RUNNING。与 resumeTransfer（崩溃恢复）是两条独立路径。 */
+    fun unpauseTransfer(id: String) {
+        viewModelScope.launch {
+            coreOwningTransfer(id)?.let { runCatching { it.unpauseTransfer(id) } }
         }
     }
 
@@ -1503,7 +2061,274 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
     private fun appRootPath(): String =
         File(getApplication<Application>().filesDir, "storage").absolutePath
 
+    /** 递归计算本地文件/目录大小（字节）；目录逐层求和。 */
+    private fun dirSize(f: File): Long =
+        if (f.isFile) f.length() else f.listFiles()?.sumOf { dirSize(it) } ?: 0L
+
+    /** 首页分类数量：走索引 count，不遍历目录树；跨 app/共享/系统三个内核。 */
+    fun refreshCategoryStats() {
+        viewModelScope.launch {
+            val t0 = android.os.SystemClock.elapsedRealtime()
+            val stats = withContext(Dispatchers.IO) {
+                // 只统计用户数据：系统根 `/` 是 Android rootfs（/system、/data…），
+                // 不属于用户文件，也不该出现在相册/文档分类里。
+                val cores = listOfNotNull(appCore, sharedCore)
+                CATEGORY_DEFS.map { (key, labelRes, exts) ->
+                    val includeHidden = _state.value.showHidden
+                    val total = cores.sumOf { c ->
+                        runCatching {
+                            c.countByExts(exts.toList(), includeHidden).toLong()
+                        }.getOrDefault(0L)
+                    }
+                    CategoryStat(key, L10n.t(labelRes), exts, total)
+                }
+            }
+            android.util.Log.d(
+                "SuperFiles",
+                "category counts ${android.os.SystemClock.elapsedRealtime() - t0}ms " +
+                    stats.joinToString { "${it.key}=${it.count}" },
+            )
+            _state.update { it.copy(categoryStats = stats) }
+        }
+    }
+
+    /** 某个存储当前是否正在建立索引（用于把进度标到索引管理页对应行）。 */
+    fun isIndexTargetRunning(target: IndexTarget): Boolean {
+        val running = _state.value.scanTargetId ?: return false
+        return if (target.isLocal) {
+            running == appCore.rootId() || running == sharedCore?.rootId()
+        } else {
+            running == target.id
+        }
+    }
+
+    private fun protocolKindLabel(protocol: String): String = when (protocol.lowercase()) {
+        "smb" -> "SMB"
+        "webdav" -> "WebDAV"
+        "sftp" -> "SFTP"
+        "s3" -> "S3"
+        else -> L10n.t(R.string.s_index_kind_cloud)
+    }
+
+    /**
+     * 索引管理页数据：本地存储（沙盒 + 共享存储）+ 每个已挂载的网络存储，
+     * 各自已索引的条目数。网络存储只有用户点「建立索引」后才会入库。
+     */
+    fun refreshIndexTargets() {
+        viewModelScope.launch {
+            val mounts = _state.value.networkMounts.filter { it.rootId != null }
+            val targets = withContext(Dispatchers.IO) {
+                val localCount =
+                    runCatching { appCore.indexPrefixCount(appCore.rootId()) }.getOrDefault(0uL) +
+                        (sharedCore?.let { c ->
+                            runCatching { c.indexPrefixCount(c.rootId()) }.getOrDefault(0uL)
+                        } ?: 0uL)
+                val local = IndexTarget(
+                    id = "local",
+                    name = L10n.t(R.string.s_index_target_local),
+                    kind = L10n.t(R.string.s_index_kind_local),
+                    entries = localCount.toLong(),
+                    isLocal = true,
+                )
+                val network = mounts.mapNotNull { mount ->
+                    val rootId = mount.rootId ?: return@mapNotNull null
+                    val core = runCatching { coreForPath(rootId)?.first }.getOrNull() ?: appCore
+                    val count = runCatching { core.indexPrefixCount(rootId) }.getOrDefault(0uL)
+                    IndexTarget(
+                        id = rootId,
+                        name = mount.config.name,
+                        kind = protocolKindLabel(mount.config.protocol),
+                        entries = count.toLong(),
+                        isLocal = false,
+                        mount = mount,
+                    )
+                }
+                listOf(local) + network
+            }
+            _state.update { it.copy(indexTargets = targets) }
+        }
+    }
+
+    /**
+     * 索引管理：建立/重建某个存储的索引（本地 = 沙盒 + 共享存储）。
+     * 统一走串行扫描队列：前台显示进度，离开页面/切到首页任务继续在后台跑。
+     */
+    fun rebuildIndexTarget(target: IndexTarget) {
+        if (target.isLocal) {
+            indexAccessibleRoots(force = true, label = target.name)
+            notice(L10n.t(R.string.s_index_rebuild_started, target.name))
+            return
+        }
+        val root = target.mount?.rootId ?: target.id
+        indexMountInBackground(root, target.name)
+        notice(L10n.t(R.string.s_index_rebuild_started, target.name))
+    }
+
+    /**
+     * 索引管理：清空某个存储的索引。本地索引是搜索/分类/最近打开/离线浏览的
+     * 数据来源，UI 会先给出警告和原因；网络存储索引直接删除即可。
+     */
+    fun clearIndexTarget(target: IndexTarget) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                if (target.isLocal) {
+                    runCatching { appCore.clearIndex() }
+                    sharedCore?.let { runCatching { it.clearIndex() } }
+                } else {
+                    val root = target.mount?.rootId ?: target.id
+                    val core = runCatching { coreForPath(root)?.first }.getOrNull() ?: appCore
+                    runCatching { core.clearIndexPrefix(root) }
+                }
+            }
+            // 清空后取消扫描冷却：下次「重建」必须真的重扫，而不是被 10 分钟冷却跳过。
+            prefs.edit().apply {
+                remove(scanCooldownKey(appCore.rootId()))
+                sharedCore?.let { remove(scanCooldownKey(it.rootId())) }
+                apply()
+            }
+            notice(
+                if (target.isLocal) {
+                    L10n.t(R.string.s_index_local_deleted)
+                } else {
+                    L10n.t(R.string.s_index_deleted, target.name)
+                },
+            )
+            refreshIndexTargets()
+            refreshCategoryStats()
+            loadFavorites()
+            loadRecent()
+            if (target.isLocal) {
+                prefs.edit().putBoolean(KEY_SCAN_DONE, false).apply()
+                _state.update { it.copy(indexedCount = 0) }
+            }
+        }
+    }
+
+    /** 清理范围：共享存储的用户数据目录（不含 Android/ 等系统/第三方根）+ 应用沙盒。 */
+    private fun cleanupRoots(): List<File> {
+        val roots = mutableListOf<File>()
+        File(appRootPath()).takeIf { it.isDirectory }?.let { roots += it }
+        val shared = File(sharedRootPath())
+        listOf("Download", "DCIM", "Pictures", "Movies", "Music", "Documents").forEach { name ->
+            shared.resolve(name).takeIf { it.isDirectory }?.let { roots += it }
+        }
+        return roots
+    }
+
+    /** 重新扫描：null = 用户数据根列表，否则扫描该目录一级条目。 */
+    fun scanStorageForCleanup() = scanCleanupAt(null)
+
+    fun enterCleanupDir(path: String) = scanCleanupAt(path)
+
+    /** 返回上一级；已经在根列表时返回 false（交给页面退出）。 */
+    fun cleanupGoUp(): Boolean {
+        val cur = _cleanupPath.value ?: return false
+        if (cur in cleanupRoots().map { it.absolutePath }) {
+            scanCleanupAt(null)
+            return true
+        }
+        val parent = File(cur).parentFile ?: return false
+        scanCleanupAt(parent.absolutePath)
+        return true
+    }
+
+    private fun scanCleanupAt(path: String?) {
+        if (_cleanupScanning.value) return
+        viewModelScope.launch {
+            _cleanupScanning.value = true
+            val items = withContext(Dispatchers.IO) {
+                runCatching {
+                    val dirs = if (path == null) cleanupRoots() else listOf(File(path))
+                    dirs.flatMap { dir ->
+                        dir.listFiles().orEmpty()
+                            .filter { !it.name.startsWith(".") }
+                            .map { f -> CleanupItem(f.absolutePath, f.name, dirSize(f), f.isDirectory) }
+                    }.distinctBy { it.path }.sortedByDescending { it.size }
+                }.getOrDefault(emptyList())
+            }
+            _cleanupItems.value = items
+            _cleanupPath.value = path
+            _cleanupScanning.value = false
+        }
+    }
+
+    /** 批量删除清理项：逐个递归删除，汇总成功/失败后刷新当前目录。 */
+    fun deleteCleanupItems(items: List<CleanupItem>) {
+        if (items.isEmpty()) return
+        viewModelScope.launch {
+            val (ok, failed) = withContext(Dispatchers.IO) {
+                var o = 0
+                var f = 0
+                items.forEach { item ->
+                    if (runCatching { File(item.path).deleteRecursively() }.getOrDefault(false)) {
+                        o++
+                    } else {
+                        f++
+                    }
+                }
+                o to f
+            }
+            scanCleanupAt(_cleanupPath.value)
+            refreshCurrent()
+            notice(
+                if (failed == 0) {
+                    L10n.t(R.string.s_cleanup_deleted_n, ok.toString())
+                } else {
+                    L10n.t(R.string.s_cleanup_deleted_partial, ok.toString(), failed.toString())
+                },
+            )
+        }
+    }
+
+    /** 点击清理项：目录进入下一级，文件走内置预览/外部打开。 */
+    fun openCleanupItem(context: android.content.Context, item: CleanupItem) {
+        viewModelScope.launch {
+            if (item.isDir) {
+                scanCleanupAt(item.path)
+                return@launch
+            }
+            val entry = withContext(Dispatchers.IO) {
+                runCatching { (coreForPath(item.path)?.first ?: core).stat(item.path) }.getOrNull()
+            }
+            if (entry == null) {
+                notice(L10n.t(R.string.s_df86c859dc))
+                return@launch
+            }
+            if (isPreviewable(entry)) {
+                openDocPreview(entry)
+            } else if (!openFileDefault(context, File(item.path), entry.name)) {
+                notice(L10n.t(R.string.s_d0b586db3b, (entry.name)))
+            }
+        }
+    }
+
+    /** 删除一个清理项（本地文件/目录，递归删除）；失败给提示，成功后刷新浏览页。 */
+    fun deleteCleanupItem(item: CleanupItem) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { File(item.path).deleteRecursively() }.getOrDefault(false)
+            }
+            if (ok) {
+                _cleanupItems.update { it.filterNot { c -> c.path == item.path } }
+                notice(L10n.t(R.string.s_40cfaa37c2, (item.name)))
+                scanCleanupAt(_cleanupPath.value)
+                refreshCurrent()
+            } else {
+                notice(L10n.t(R.string.s_cleanup_failed, (item.name)))
+            }
+        }
+    }
+
     /** 目标选择器：根列表 = 应用存储 / 本地存储 / 各网络挂载。 */
+    /** 同一后端（尤其 WebDAV 的 host）可能被不同名字挂载两次，rootId 相同会撞 LazyColumn key。 */
+    private fun dedupeMounts(list: List<NetworkMountStatus>): List<NetworkMountStatus> {
+        val seen = HashSet<String>()
+        return list.filter { st ->
+            val key = st.rootId ?: ("name:" + st.config.name)
+            seen.add(key)
+        }
+    }
+
     suspend fun destRoots(): List<DestNode> = withContext(Dispatchers.IO) {
         val sys = openSystem() ?: return@withContext emptyList()
         val nodes = mutableListOf<DestNode>()
@@ -1520,7 +2345,7 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         runCatching { sys.stat(sharedRootPath()) }.getOrNull()?.let {
             nodes += DestNode(it.id, L10n.t(R.string.s_5e2bb608f9), L10n.t(R.string.s_c2b9f4b9fc))
         }
-        nodes
+        nodes.distinctBy { it.id }
     }
 
     /** 目标选择器打开时重试断开的网络挂载，避免只看到本地目录。 */
@@ -1751,7 +2576,17 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(userNickname = name, userAvatarChar = avatarCharOf(name)) }
     }
 
-    private fun avatarCharOf(name: String): String = name.lastOrNull()?.toString() ?: L10n.t(R.string.s_1681525453)
+    /** 头像字：拉丁名取首字母大写（Tony→T），其余取最后一个字符（刘帅→帅）；空回退默认。 */
+    private fun avatarCharOf(name: String): String {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return L10n.t(R.string.s_1681525453)
+        val first = trimmed.first()
+        return if (first in 'a'..'z' || first in 'A'..'Z') {
+            first.uppercaseChar().toString()
+        } else {
+            trimmed.last().toString()
+        }
+    }
 
     fun coreVersion(): String = runCatching { core.version() }.getOrDefault("-")
 
@@ -1831,6 +2666,7 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
             result
                 .onSuccess {
                     refreshCurrent()
+                    refreshCategoryStats()
                     notice(L10n.t(R.string.s_f4f64b6654, (name)))
                 }
                 .onFailure(::report)
@@ -1884,6 +2720,7 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
             result
                 .onSuccess { out ->
                     refreshCurrent()
+                    refreshCategoryStats()
                     notice(L10n.t(R.string.s_c8c6277159, (out.name)))
                 }
                 .onFailure(::report)
@@ -1974,8 +2811,8 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                         destDir = destId,
                         pin = null,
                         enableDiscovery = true,
-                        // 安全：无传输活动 5 分钟后自动关闭监听。
-                        idleTimeoutSecs = 300uL,
+                        // 安全：无传输活动自动关闭监听（用户可配，0=永不）。
+                        idleTimeoutSecs = _state.value.localSendIdleSecs.toULong(),
                     )
                     val handle = core.startLocalSend(opts)
                     localSendHandle = handle
@@ -1996,6 +2833,7 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     localSendLastFileCount =
                         if (destId.startsWith("/")) countFiles(File(destId)) else -1
+                    seedLocalSendRecvBaseline(destId)
                     notice(L10n.t(R.string.s_6627878273, (info.alias)))
                     startLocalSendPolling()
                     refreshLocalSendPeers()
@@ -2035,26 +2873,15 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         prefs.getString(KEY_LOCAL_SEND_DEST_ID, null)?.takeIf { it.isNotBlank() }?.let {
             return it
         }
-        val shared = File(
-            android.os.Environment.getExternalStorageDirectory(),
-            "Download/superfiles",
-        )
-        return if (android.os.Environment.isExternalStorageManager()) {
-            shared.absolutePath
-        } else {
-            File(getApplication<Application>().filesDir, "storage/LocalSend").absolutePath
-        }
+        // 默认落在「应用存储」根目录
+        return appRootPath()
     }
 
     fun localSendDestLabel(): String {
         prefs.getString(KEY_LOCAL_SEND_DEST_NAME, null)?.takeIf { it.isNotBlank() }?.let {
             return it
         }
-        return if (android.os.Environment.isExternalStorageManager()) {
-            L10n.t(R.string.s_c117707537)
-        } else {
-            L10n.t(R.string.s_d593dbeee7)
-        }
+        return L10n.t(R.string.s_99f7a465ec)
     }
 
     /** 用户选择接收位置（支持本地/共享/NAS）。运行中会自动重启监听以生效。 */
@@ -2165,6 +2992,55 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** 组网深链（两端同契约）：superfiles://localsend?ip=..（扫码/系统深链共用）。 */
+    fun registerFromLocalSendLink(link: String) {
+        val uri = runCatching { android.net.Uri.parse(link) }.getOrNull() ?: return
+        if (uri.scheme != "superfiles" || uri.host != "localsend") return
+        val ip = uri.getQueryParameter("ip")?.trim().orEmpty()
+        if (ip.isEmpty()) return
+        val port = uri.getQueryParameter("port")?.toIntOrNull() ?: 53317
+        val fp = uri.getQueryParameter("fp")?.trim()?.takeIf { it.isNotBlank() }
+        ensureLocalSendStarted()
+        viewModelScope.launch {
+            // 深链可能在服务冷启动前到达：等接收服务起来（最多 ~6s）
+            var tries = 0
+            while (localSendHandle == null && tries < 12) {
+                kotlinx.coroutines.delay(500)
+                tries++
+            }
+            registerLocalSendPeer(ip, port, fp) { ok, err ->
+                notice(
+                    if (ok) L10n.t(R.string.s_lswiz_peer_added, ip)
+                    else err ?: L10n.t(R.string.s_lswiz_bad),
+                )
+            }
+        }
+    }
+
+    /** 本机私网 IPv4（Wi-Fi / 热点候选），组网码展示用。 */
+    fun localSendIps(): List<String> = runCatching {
+        val out = LinkedHashSet<String>()
+        java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces()).forEach { nif ->
+            nif.interfaceAddresses.forEach { ia ->
+                val addr = ia.address
+                if (addr is java.net.Inet4Address && !addr.isLoopbackAddress && addr.isSiteLocalAddress) {
+                    addr.hostAddress?.let { out.add(it) }
+                }
+            }
+        }
+        out.toList()
+    }.getOrDefault(emptyList())
+
+    /** 「无传输活动自动关闭」时长（秒，0=永不）：持久化；运行中重启服务即时生效。 */
+    fun setLocalSendIdleSecs(secs: Long) {
+        if (secs < 0) return
+        prefs.edit().putLong(KEY_LS_IDLE_SECS, secs).apply()
+        _state.update { it.copy(localSendIdleSecs = secs) }
+        if (_state.value.localSendRunning) {
+            restartLocalSend()
+        }
+    }
+
     /** 手动 IP 兜底：组播被 AP 隔离时直接连对方。 */
     fun registerLocalSendPeer(
         ip: String,
@@ -2235,6 +3111,7 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
             result
                 .onSuccess {
                     notice(L10n.t(R.string.s_52eecbbc3c, (peer.alias)))
+                    recordLocalSendSends(files, peer.alias)
                     onResult(true, null)
                 }
                 .onFailure {
@@ -2242,6 +3119,27 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                     notice(L10n.t(R.string.s_71e1eaada9, (msg)))
                     onResult(false, msg)
                 }
+        }
+    }
+
+    /** 发出侧也记近邻流水（传输中心「近邻传输」分组）。 */
+    private fun recordLocalSendSends(files: List<Entry>, peerAlias: String) {
+        val now = System.currentTimeMillis()
+        val items = files.map {
+            LocalSendReceived(it.name, it.size.toLong(), now, incoming = false, peer = peerAlias)
+        }
+        _state.update { s ->
+            s.copy(localSendRecords = (items + s.localSendRecords).take(50))
+        }
+    }
+
+    /**
+     * 传输中心近邻流水：左滑移除单条。流水只是内存态展示（take(50) 滚动窗口），
+     * 近邻传输页的「已接收」清单独立维护，这里删它不影响那份清单。
+     */
+    fun removeLocalSendRecord(record: LocalSendReceived) {
+        _state.update { s ->
+            s.copy(localSendRecords = s.localSendRecords.filterNot { it.seq == record.seq })
         }
     }
 
@@ -2298,9 +3196,53 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     localSendLastFileCount = count
                 }
+                pollLocalSendRecv(dest)
                 _state.update { it.copy(localSendPeers = peers, localSendErrors = errors) }
                 kotlinx.coroutines.delay(3000)
             }
+        }
+    }
+
+    /** (文件名, 字节数) 快照；.tmp 过程文件跳过（内核接收完成才落定命名）。 */
+    private fun currentRecvEntries(destId: String): List<Pair<String, Long>> {
+        if (destId.isBlank()) return emptyList()
+        return runCatching {
+            if (destId.startsWith("/")) {
+                File(destId).listFiles()?.filter { it.isFile && !it.name.endsWith(".tmp") }
+                    ?.map { it.name to it.length() } ?: emptyList()
+            } else {
+                core.list(destId).filter { it.kind == EntryKind.FILE && !it.name.endsWith(".tmp") }
+                    .map { it.name to it.size.toLong() }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /** 建立接收目录基线（开启接收时已存在的文件不算「新到」）。 */
+    private fun seedLocalSendRecvBaseline(destId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            localSendSeenNames.clear()
+            localSendSeenNames.addAll(currentRecvEntries(destId).map { it.first })
+            localSendBaselineReady = true
+        }
+    }
+
+    /** 接收到账对账：差集 → 常驻「已接收」清单 + 瞬时提示（清单解决“弹完就找不到”）。 */
+    private fun pollLocalSendRecv(destId: String) {
+        if (destId.isBlank() || !localSendBaselineReady) return
+        viewModelScope.launch {
+            val entries = withContext(Dispatchers.IO) { currentRecvEntries(destId) }
+            val fresh = entries.filter { it.first !in localSendSeenNames }
+            if (fresh.isEmpty()) return@launch
+            localSendSeenNames.addAll(fresh.map { it.first })
+            val now = System.currentTimeMillis()
+            val items = fresh.map { LocalSendReceived(it.first, it.second, now) }
+            _state.update { s ->
+                s.copy(
+                    localSendReceived = (items.asReversed() + s.localSendReceived).take(20),
+                    localSendRecords = (items + s.localSendRecords).take(50),
+                )
+            }
+            notice(L10n.t(R.string.s_1b382382fe, (fresh.size), (localSendDestLabel())))
         }
     }
 
@@ -2515,6 +3457,39 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissDetails() = _state.update { it.copy(details = null) }
 
+    /** 打开文档预览页（只收文件；计入「最近打开」，与外部打开同一口径）。 */
+    fun openDocPreview(entry: Entry) {
+        if (entry.kind != EntryKind.FILE) return
+        recordOpen(entry)
+        _state.update { it.copy(docPreview = entry) }
+    }
+
+    fun dismissDocPreview() = _state.update { it.copy(docPreview = null) }
+
+    /** 仅 DEBUG：adb 触发某个网络存储的索引重建（验证后台扫描/进度）。 */
+    fun debugRebuildMount(rootId: String) {
+        indexMountInBackground(rootId, "debug")
+    }
+
+    /** 仅 DEBUG：adb 触发一次分类筛选，用于测量耗时。 */
+    fun debugApplyFilter(key: String) {
+        val def = CATEGORY_DEFS.firstOrNull { it.first == key } ?: return
+        applyTypeFilter(L10n.t(def.second), def.third)
+    }
+
+    /** 仅 DEBUG：从 intent 直接打开预览，供 adb 自动化验证（不影响正式包）。 */
+    fun debugOpenPreview(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { core.stat(id) }.onSuccess { entry ->
+                if (entry.kind == EntryKind.FILE) openDocPreview(entry)
+            }
+        }
+    }
+
+    /** PDF 预览落地缓存用：按偏移读条目字节（阻塞 FFI → IO 线程）。 */
+    suspend fun readEntryBytes(id: String, offset: Long, want: Int): ByteArray =
+        withContext(Dispatchers.IO) { core.readBytes(id, offset.toULong(), want.toUInt()) }
+
     /** 打开「⋯」操作面板（首页最近列表与文件页共用）。 */
     fun showActions(entry: Entry) = _state.update { it.copy(actionsTarget = entry) }
 
@@ -2572,61 +3547,120 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
     // ---- 类型筛选（首页「我的文件夹」快捷入口） ----
 
     /** 全树遍历并按扩展名过滤（如 个人文档={csv,txt} / 工作资料={pdf,doc,docx,ppt,pptx}）。 */
+    /** 首页发起进入文件页：下一次 load 成功后把当前目录记为 homeEntryRoot。 */
+    private var armHomeEntry = false
+
+    fun markHomeEntry() {
+        armHomeEntry = true
+    }
+
+    fun clearHomeEntry() {
+        armHomeEntry = false
+        _state.update { it.copy(homeEntryRoot = null) }
+    }
+
+    /** 进入分类筛选前的目录，返回时恢复到这里（而不是内核根）。 */
+    private var filterOriginId: String? = null
+
+    /** 分类首屏每内核取这么多条：点开即出，剩下的一律后台续载。 */
+    private val filterFirstPage = 240u
+    /** 递增令牌：用户切走/换分类后，旧的后台加载结果直接丢弃。 */
+    private var filterToken = 0
+
+    /** 每内核按扩展名分页取一段，合并后返回（不做排序，调用方统一排）。 */
+    private fun loadFilterSlice(offset: UInt, limit: UInt): List<Entry> {
+        val cores = listOfNotNull(appCore, sharedCore)
+        val out = ArrayList<Entry>()
+        for (c in cores) {
+            val bytes = runCatching {
+                c.listByExtsPacked(extsForFilter, offset, limit, _state.value.showHidden)
+            }.getOrDefault(ByteArray(0))
+            out += com.superfiles.app.core.PackedEntries.decode(bytes)
+        }
+        return out
+    }
+
+    /** 当前分类筛选的扩展名（后台分页读取用；随 applyTypeFilter 更新）。 */
+    private var extsForFilter: List<String> = emptyList()
+
     fun applyTypeFilter(label: String, exts: Set<String>) {
         if (exts.isEmpty()) return
+        if (_state.value.filterExts.isEmpty()) {
+            filterOriginId = _state.value.currentId.takeIf { it.isNotEmpty() }
+        }
+        extsForFilter = exts.toList()
+        val token = ++filterToken
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null, searchQuery = "") }
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    val matches = ArrayList<Entry>()
-                    val queue = ArrayDeque(listOf(core.rootId()))
-                    while (queue.isNotEmpty()) {
-                        val dir = queue.removeFirst()
-                        // 权限受限目录（共享存储的 Android/data、Android/obb 等）跳过，
-                        // 不让单个不可读目录中断整次过滤
-                        val children = runCatching { core.list(dir) }.getOrDefault(emptyList())
-                        for (entry in children) {
-                            when {
-                                entry.kind == EntryKind.DIRECTORY -> queue.addLast(entry.id)
-                                entry.kind == EntryKind.FILE && extOf(entry.name) in exts ->
-                                    matches.add(entry)
-                            }
-                        }
-                    }
-                    val sorted = matches.sortedBy { it.name }
-                    sorted to sorted.associate { it.id to locationOf(it) }
+            val t0 = android.os.SystemClock.elapsedRealtime()
+            // 立即清空旧列表：避免先显示上一个目录的内容再被图片替换
+            _state.update {
+                it.copy(
+                    loading = true,
+                    error = null,
+                    searchQuery = "",
+                    entries = emptyList(),
+                    locationProvider = null,
+                )
+            }
+            // 首屏：只取最新的几百条，解码成本可以忽略（点开即出）。
+            val first = withContext(Dispatchers.IO) {
+                loadFilterSlice(0u, filterFirstPage).distinctBy { it.id }
+                    .sortedByDescending { it.modifiedMs ?: 0L }
+            }
+            if (token != filterToken) return@launch
+            android.util.Log.d(
+                "SuperFiles",
+                "filter[$label] first page ${first.size} in ${android.os.SystemClock.elapsedRealtime() - t0}ms",
+            )
+            _state.update {
+                it.copy(
+                    loading = false,
+                    filterLabel = label,
+                    filterExts = exts,
+                    entries = visible(first),
+                    locationProvider = { entry -> locationOf(entry) },
+                    title = L10n.t(R.string.s_045738c243, (label), (it.entries.size)),
+                    canGoUp = false,
+                    error = null,
+                    offlineCacheMs = null,
+                    selectionMode = false,
+                    selectedIds = emptySet(),
+                )
+            }
+            // 后台续载：一次性取完剩下的，合并排序后替换（用户此时已在看图）。
+            val all = withContext(Dispatchers.IO) {
+                val slice = runCatching { loadFilterSlice(filterFirstPage, UInt.MAX_VALUE) }
+                    .getOrDefault(emptyList())
+                (first + slice).distinctBy { it.id }.sortedByDescending { it.modifiedMs ?: 0L }
+            }
+            if (token != filterToken) return@launch
+            android.util.Log.d(
+                "SuperFiles",
+                "filter[$label] full ${all.size} in ${android.os.SystemClock.elapsedRealtime() - t0}ms",
+            )
+            _state.update {
+                if (it.filterExts != exts) {
+                    it
+                } else {
+                    it.copy(
+                        entries = visible(all),
+                        title = L10n.t(R.string.s_045738c243, (label), (visible(all).size)),
+                    )
                 }
             }
-            result
-                .onSuccess { (matches, locations) ->
-                    _state.update {
-                        val shown = visible(matches)
-                        it.copy(
-                            loading = false,
-                            filterLabel = label,
-                            filterExts = exts,
-                            entries = shown,
-                            entryLocations = locations,
-                            title = L10n.t(R.string.s_045738c243, (label), (shown.size)),
-                            canGoUp = false,
-                            error = null,
-                            offlineCacheMs = null,
-                            selectionMode = false,
-                            selectedIds = emptySet(),
-                        )
-                    }
-                }
-                .onFailure(::report)
         }
     }
 
     fun clearFilter() {
         if (_state.value.filterExts.isEmpty()) return
+        filterToken++
         history.clear()
         _state.update {
             it.copy(filterLabel = null, filterExts = emptySet(), searchQuery = "")
         }
-        load(core.rootId())
+        val origin = filterOriginId
+        filterOriginId = null
+        load(origin ?: core.rootId())
     }
 
     // ---- 搜索焦点一次 signal（首页搜索框 → 文件 Tab 自动聚焦） ----
@@ -2639,6 +3673,7 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
 
     private companion object {
         const val KEY_SHOW_HIDDEN = "show_hidden"
+        const val KEY_LS_IDLE_SECS = "ls_idle_secs"
         const val KEY_SCAN_DONE = "scan_done"
         const val KEY_NETWORK_MOUNTS = "network_mounts"
         const val KEY_NETWORK_MOUNTS_ENC = "network_mounts_enc"
@@ -2662,12 +3697,15 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
             }
             result
                 .onSuccess { (entries, caps, path) ->
+                    val fromHome = armHomeEntry
+                    armHomeEntry = false
                     _state.update {
                         it.copy(
                             loading = false,
                             currentId = id,
+                            homeEntryRoot = if (fromHome) id else it.homeEntryRoot,
                             entries = visible(entries),
-                            entryLocations = emptyMap(),
+                            locationProvider = null,
                             capabilities = caps,
                             canGoUp = history.isNotEmpty(),
                             title = path,
@@ -2700,7 +3738,7 @@ class VfsViewModel(application: Application) : AndroidViewModel(application) {
                                 loading = false,
                                 currentId = id,
                                 entries = visible(cached.entries),
-                                entryLocations = emptyMap(),
+                                locationProvider = null,
                                 capabilities = null,
                                 canGoUp = history.isNotEmpty(),
                                 title = runCatching { core.displayPath(id) }.getOrDefault(id),

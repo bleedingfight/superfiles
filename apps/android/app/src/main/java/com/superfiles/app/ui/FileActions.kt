@@ -489,6 +489,28 @@ internal fun openWithApp(context: Context, file: File, name: String) {
     runCatching { context.startActivity(Intent.createChooser(viewIntent(context, file, name), L10n.t(R.string.s_14aecbce66))) }
 }
 
+/** 本任务的文档预览后缀：pdf 全页渲染；office/epub 无内置渲染器 → 预览占位页（可再跳第三方）。 */
+private val PREVIEWABLE_DOC_EXTS = setOf(
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "epub",
+)
+
+/**
+ * 行内单击的统一入口：可预览文档进应用内预览页；其余走「外部应用打开」既有链路
+ * （本地 FileProvider / 远端流式 Provider）。
+ */
+internal fun openEntryPrimary(
+    context: Context,
+    viewModel: com.superfiles.app.VfsViewModel,
+    entry: Entry,
+) {
+    val ext = entry.name.substringAfterLast('.', "").lowercase()
+    if (ext in PREVIEWABLE_DOC_EXTS) {
+        viewModel.openDocPreview(entry)
+    } else {
+        openEntryFile(context, viewModel, entry, chooser = false)
+    }
+}
+
 /**
  * 统一「打开」入口：本地文件直开；网络挂载文件先异步下载到缓存（同大小/时间复用）再交付。
  * `chooser=true` 走「打开方式」选择器。
@@ -499,6 +521,12 @@ internal fun openEntryFile(
     entry: Entry,
     chooser: Boolean,
 ) {
+    // 内置预览：图片 / 视频 / 文本（与 HarmonyOS 的 PreviewView 对齐）。
+    // 「打开方式」仍然交给外部应用。
+    if (!chooser && isPreviewable(entry)) {
+        viewModel.openDocPreview(entry)
+        return
+    }
     fun deliver(file: File) {
         val ok = if (chooser) {
             openWithApp(context, file, entry.name)
@@ -753,7 +781,7 @@ internal fun DangerConfirmDialog(
 // ---- 就近分享（ADR 0005）：二维码 + 链接，关闭即焚 ----
 
 /** zxing 生成二维码 Bitmap（失败返回 null，UI 退化为纯链接展示）。 */
-private fun qrBitmapOf(content: String, sizePx: Int): android.graphics.Bitmap? = runCatching {
+internal fun qrBitmapOf(content: String, sizePx: Int): android.graphics.Bitmap? = runCatching {
     val bits = com.google.zxing.qrcode.QRCodeWriter().encode(
         content,
         com.google.zxing.BarcodeFormat.QR_CODE,
