@@ -1,0 +1,34 @@
+{
+  "//": "Super Files 挂载注册表。复制到 ~/.config/superfiles/mounts.json（或用 $SF_CONFIG 指定其他路径）。",
+  "//2": "local 的 root 是沙盒根（越界会被内核拒绝）；remote 就是 webdav/smb/sftp 后端，与移动端 App 同一条路径。",
+  "storages": [
+    {
+      "label": "Home",
+      "type": "local",
+      "root": "/home/liushuai"
+    },
+    {
+      "label": "123pan",
+      "type": "webdav",
+      "base_url": "https://webdav.123pan.cn/webdav",
+      "username": "your-account",
+      "password": "your-app-password"
+    },
+    {
+      "label": "NAS-Media",
+      "type": "smb",
+      "server": "192.168.31.10",
+      "share": "Media",
+      "username": "",
+      "password": ""
+    },
+    {
+      "label": "VPS",
+      "type": "sftp",
+      "server": "203.0.113.7",
+      "port": 22,
+      "username": "me",
+      "password": "…"
+    }
+  ]
+}

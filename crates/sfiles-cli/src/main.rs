@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 use vfs_core::{CancelToken, Entry, EntryKind, Vfs};
 
+mod kio;
+
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -125,6 +127,7 @@ async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             tokio::signal::ctrl_c().await?;
             server.shutdown().await;
         }
+        "kio" => kio::run(&args[1..]).await?,
         "-h" | "--help" | "help" => print_help(),
         other => {
             eprintln!("unknown command: {other}");
@@ -186,6 +189,7 @@ USAGE:
   sfiles index <root> <db.sqlite>   index a tree into SQLite
   sfiles search <db.sqlite> <query> search the index
   sfiles serve <root> [id]          stream an entry over loopback HTTP+Range
+  sfiles kio <command> [args]       KDE KIO worker surface (Dolphin plugin)
 
 `root` is the jail the local backend is allowed to touch."
     );

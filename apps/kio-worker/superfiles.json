@@ -1,0 +1,36 @@
+{
+    "KPlugin": {
+        "Id": "kio_superfiles",
+        "Name": "Super Files",
+        "Description": "Browse Super Files storages (local jails, WebDAV, SMB, SFTP) via the superfiles:// protocol",
+        "Version": "0.1.0",
+        "License": "MIT",
+        "Icon": "folder-remote"
+    },
+    "KDE-KIO-Protocols": {
+        "superfiles": {
+            "Class": ":local",
+            "protocol": "superfiles",
+            "Icon": "folder-remote",
+            "input": "none",
+            "output": "stream",
+            "source": false,
+            "reading": true,
+            "writing": false,
+            "copyFromFile": true,
+            "copyToFile": false,
+            "deleteFromFile": false,
+            "deleteToFile": false,
+            "determineMimetypeFromExtension": false,
+            "defaultMimetype": "application/octet-stream",
+            "listing": [
+                "Name",
+                "Type",
+                "Size",
+                "ModifyDate",
+                "MimeType",
+                "Access"
+            ]
+        }
+    }
+}
