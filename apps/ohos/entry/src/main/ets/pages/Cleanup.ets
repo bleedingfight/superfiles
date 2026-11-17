@@ -1,9 +1,10 @@
 import { common } from '@kit.AbilityKit';
 import { router } from '@kit.ArkUI';
-import { CompletedTransfer, Entry, EntryKind, SuperFiles } from '@superfiles/core';
+import { CompletedTransfer, ConflictPolicy, Entry, EntryKind, SuperFiles } from '@superfiles/core';
 import { getCore } from '../common/Core';
 import { formatBytes, formatDate, formatClock, errText } from '../common/Format';
 import { FileIcon } from '../common/FileIcon';
+import { SelDot } from '../common/SelDot';
 import { t } from '../common/L10n';
 import {
   theme, Palette, SCREEN_MARGIN, RADIUS_L, RADIUS_M,
@@ -20,6 +21,15 @@ interface CleanItem {
   modified: number;
 }
 
+const SORT_SIZE: string = 'size';
+const SORT_TIME: string = 'time';
+const SORT_NAME: string = 'name';
+
+const SHEET_NONE: string = 'none';
+const SHEET_MORE: string = 'more';
+const SHEET_SORT: string = 'sort';
+const SHEET_PICK: string = 'pick';
+
 @Entry
 @Component
 struct Cleanup {
@@ -30,10 +40,17 @@ struct Cleanup {
   @State error: string = '';
   @State notice: string = '';
   @State confirming: boolean = false;
-  /** 'dir' = 删本机文件/目录；'arrival' = 删一次传输拷入的全部目标文件。 */
+  /** 'dir' = 删本机对象；'arrival' = 删一次传输拷入的全部目标文件；'batch' = 批量。 */
   @State confirmKind: string = 'dir';
   @State targetId: string = '';
   @State targetName: string = '';
+  @State selecting: boolean = false;
+  @State selected: string[] = [];
+  @State sortKey: string = SORT_SIZE;
+  @State sortAsc: boolean = false;
+  @State sheet: string = SHEET_NONE;
+  @State pickCrumbs: string[] = [];
+  @State pickEntries: Entry[] = [];
   @StorageLink('sfDark') dark: boolean = false;
   @StorageLink('sfLang') lang: string = 'auto';
   private core: SuperFiles | null = null;
@@ -78,6 +95,8 @@ struct Cleanup {
     return at >= 0 ? trimmed.substring(at + 1) : trimmed;
   }
 
+  // ---- 扫描（顶层秒出 + 后台渐进补目录体积） ------------------------------
+
   private dirSize(id: string, budget: number[]): number {
     if (this.core === null) {
       return 0;
@@ -103,11 +122,6 @@ struct Cleanup {
     return total;
   }
 
-  /**
-   * 顶层条目秒出（文件 size 直接来自 stat，目录先占位），
-   * 目录体积由后台 sweep 逐个补齐 —— 「后台静默扫描」：页面立即可用，
-   * 数字渐进浮现，UI 不因深目录递归而卡住。
-   */
   private scan(): void {
     if (this.core === null) {
       return;
@@ -135,8 +149,7 @@ struct Cleanup {
           modified: e.modifiedMs === undefined ? 0 : Number(e.modifiedMs)
         });
       }
-      out.sort((a: CleanItem, b: CleanItem) => Number(b.isDir) - Number(a.isDir) || b.size - a.size);
-      this.items = out;
+      this.applySort(out);
       this.startSweep(queue);
       this.refreshArrivals();
       this.loaded = true;
@@ -175,7 +188,7 @@ struct Cleanup {
         items[i].measured = true;
       }
     }
-    this.items = items;
+    this.applySort(items);
     if (this.sweeping && this.sweepQueue.length === 0) {
       this.sweeping = false;
       clearInterval(this.sweepTimer);
@@ -183,7 +196,54 @@ struct Cleanup {
     }
   }
 
-  /** 传输到本机的完成记录：2s 轮询保持同步（拷完这项很快出现在这里）。 */
+  // ---- 排序 ----------------------------------------------------------------
+
+  private applySort(rows: CleanItem[]): void {
+    const asc: number = this.sortAsc ? 1 : -1;
+    rows.sort((a: CleanItem, b: CleanItem) => {
+      if (this.sortKey === SORT_SIZE) {
+        return (a.size - b.size) * asc;
+      }
+      if (this.sortKey === SORT_TIME) {
+        return (a.modified - b.modified) * asc;
+      }
+      const an: string = a.name.toLowerCase();
+      const bn: string = b.name.toLowerCase();
+      const cmp: number = an === bn ? 0 : (an < bn ? -1 : 1);
+      return cmp * asc;
+    });
+    this.items = rows;
+  }
+
+  private sortArrivals(rows: CompletedTransfer[]): CompletedTransfer[] {
+    const asc: number = this.sortAsc ? 1 : -1;
+    rows.sort((a: CompletedTransfer, b: CompletedTransfer) => {
+      if (this.sortKey === SORT_SIZE) {
+        return (Number(a.bytesTotal) - Number(b.bytesTotal)) * asc;
+      }
+      if (this.sortKey === SORT_TIME) {
+        return (Number(a.finishedAtMs) - Number(b.finishedAtMs)) * asc;
+      }
+      const an: string = this.arrivalTitle(a).toLowerCase();
+      const bn: string = this.arrivalTitle(b).toLowerCase();
+      const cmp: number = an === bn ? 0 : (an < bn ? -1 : 1);
+      return cmp * asc;
+    });
+    return rows;
+  }
+
+  private sortLabel(): string {
+    if (this.sortKey === SORT_TIME) {
+      return this.tt('files.sortTime');
+    }
+    if (this.sortKey === SORT_SIZE) {
+      return this.tt('files.sortSize');
+    }
+    return this.tt('files.sortName');
+  }
+
+  // ---- 传输到本机（完成记录，2s 轮询同步） ---------------------------------
+
   private refreshArrivals(): void {
     if (this.core === null) {
       return;
@@ -202,7 +262,7 @@ struct Cleanup {
       }
       // 内容变了才落 @State（列表刷新会收回展开的左滑菜单）
       if (this.arrivalSig(rows) !== this.arrivalSig(this.arrivals)) {
-        this.arrivals = rows;
+        this.arrivals = this.sortArrivals(rows);
       }
     } catch (e) {
       // 最近传输读不到不阻塞页面
@@ -230,14 +290,155 @@ struct Cleanup {
     return out;
   }
 
+  private arrivalById(id: string): CompletedTransfer {
+    let found: CompletedTransfer = this.arrivals[0];
+    for (const r of this.arrivals) {
+      if (r.id === id) {
+        found = r;
+      }
+    }
+    return found;
+  }
+
+  /** 条目标题：传的是文件(目录)就叫它自己的名字；多文件 = 首名 + 等 N 项。 */
+  private arrivalTitle(r: CompletedTransfer): string {
+    if (r.sources.length === 0) {
+      return this.tt('cl.arrivals');
+    }
+    const first: string = this.basename(r.sources[0]);
+    if (r.sources.length > 1) {
+      return first + this.tt('tr.andMore', `${r.sources.length}`);
+    }
+    return first;
+  }
+
+  /** 所在目录的展示名：displayPath 失败（进程重启首查等）兜底 basename。 */
+  private arrivalDirLabel(r: CompletedTransfer): string {
+    if (this.core !== null) {
+      try {
+        const p: string = this.core.displayPath(r.destDir);
+        if (p.length > 0) {
+          return p;
+        }
+      } catch (e) {
+        // fall through
+      }
+    }
+    return this.basename(r.destDir);
+  }
+
+  // ---- 多选 ----------------------------------------------------------------
+
+  private isSelected(tag: string): boolean {
+    return this.selected.indexOf(tag) >= 0;
+  }
+
+  private toggleSelect(tag: string): void {
+    const next: string[] = this.selected.slice();
+    const at: number = next.indexOf(tag);
+    if (at >= 0) {
+      next.splice(at, 1);
+    } else {
+      next.push(tag);
+    }
+    this.selected = next;
+    if (next.length === 0) {
+      this.exitSelecting();
+    }
+  }
+
+  private beginSelecting(tag: string): void {
+    this.selecting = true;
+    this.selected = [tag];
+  }
+
+  private selectAll(): void {
+    const all: string[] = [];
+    for (const r of this.arrivals) {
+      all.push(`A:${r.id}`);
+    }
+    for (const it of this.items) {
+      all.push(`L:${it.id}`);
+    }
+    this.selected = all;
+  }
+
+  private exitSelecting(): void {
+    this.selecting = false;
+    this.selected = [];
+  }
+
+  /** 多选里某个 tag 的展示名（批量提示、移动确认用）。 */
+  private nameOfTag(tag: string): string {
+    if (tag.startsWith('A:')) {
+      for (const r of this.arrivals) {
+        if (r.id === tag.substring(2)) {
+          return this.arrivalTitle(r);
+        }
+      }
+    }
+    for (const it of this.items) {
+      if ((`L:${it.id}`) === tag) {
+        return it.name;
+      }
+    }
+    return tag;
+  }
+
+  private deleteOne(tag: string): void {
+    if (this.core === null) {
+      return;
+    }
+    if (tag.startsWith('A:')) {
+      const r: CompletedTransfer = this.arrivalById(tag.substring(2));
+      for (const target of this.arrivalTargets(r)) {
+        try {
+          this.core.stat(target);
+          this.core.remove(target, false);
+        } catch (e) {
+          // 目标文件已不存在（改名/移动过）——跳过
+        }
+      }
+      try {
+        this.core.forgetTransfer(r.id);
+      } catch (e) {
+        // 行已不在也不阻塞
+      }
+      return;
+    }
+    const id: string = tag.substring(2);
+    let isDir: boolean = false;
+    for (const it of this.items) {
+      if (it.id === id) {
+        isDir = it.isDir;
+      }
+    }
+    this.core.remove(id, isDir);
+  }
+
   private doDelete(): void {
     if (this.core === null) {
       return;
     }
+    if (this.confirmKind === 'batch') {
+      for (const tag of this.selected) {
+        try {
+          this.deleteOne(tag);
+        } catch (e) {
+          // continue
+        }
+      }
+      this.notice = this.tt('cl.deleted', `${this.selected.length}`);
+      this.confirming = false;
+      this.exitSelecting();
+      this.refreshArrivals();
+      this.scan();
+      return;
+    }
     if (this.confirmKind === 'arrival') {
-      // 删除这次传输拷到本机的全部目标文件（忽略已不存在的），然后清记录行
       let removed: number = 0;
-      for (const target of this.arrivalTargets(this.arrivalById(this.targetId))) {
+      const r: CompletedTransfer = this.arrivalById(this.targetId);
+      for (const target of this.arrivalTargets(r)) {
         try {
           this.core.stat(target);
           this.core.remove(target, false);
@@ -268,15 +469,76 @@ struct Cleanup {
     }
   }
 
-  private arrivalById(id: string): CompletedTransfer {
-    let found: CompletedTransfer = this.arrivals[0];
-    for (const r of this.arrivals) {
-      if (r.id === id) {
-        found = r;
+  // ---- 批量移动（走传输引擎：可暂停/续传，完成后回传这里） ------------------
+
+  private openPicker(): void {
+    const root: string = this.core !== null ? this.core.rootId() : '';
+    this.pickCrumbs = [root];
+    this.loadPickDir();
+    this.sheet = SHEET_PICK;
+  }
+
+  private loadPickDir(): void {
+    if (this.core === null) {
+      return;
+    }
+    try {
+      const dirId: string = this.pickCrumbs[this.pickCrumbs.length - 1];
+      const all: Entry[] = this.core.list(dirId);
+      const dirs: Entry[] = [];
+      for (const e of all) {
+        if (e.kind === EntryKind.Directory && !e.name.startsWith('.')) {
+          dirs.push(e);
+        }
+      }
+      this.pickEntries = dirs;
+    } catch (e) {
+      this.pickEntries = [];
+    }
+  }
+
+  private crumbNameAt(i: number): string {
+    if (i === 0) {
+      return this.tt('files.thisDevice');
+    }
+    if (this.core === null) {
+      return '…';
+    }
+    try {
+      const e: Entry = this.core.stat(this.pickCrumbs[i]);
+      return e.name.length > 0 ? e.name : '…';
+    } catch (err) {
+      return '…';
+    }
+  }
+
+  private doBatchMove(): void {
+    if (this.core === null) {
+      return;
+    }
+    const destDir: string = this.pickCrumbs[this.pickCrumbs.length - 1];
+    const sources: string[] = [];
+    for (const tag of this.selected) {
+      if (tag.startsWith('A:')) {
+        const r: CompletedTransfer = this.arrivalById(tag.substring(2));
+        for (const target of this.arrivalTargets(r)) {
+          sources.push(target);
+        }
+      } else {
+        sources.push(tag.substring(2));
       }
     }
-    return found;
+    try {
+      this.core.startMove(sources, destDir, ConflictPolicy.Overwrite);
+      this.notice = this.tt('cl.moved', `${sources.length}`);
+      this.sheet = SHEET_NONE;
+      this.exitSelecting();
+    } catch (e) {
+      this.error = this.tt('files.transferCreateFailed') + '：' + errText(e);
+    }
   }
+
+  // ---- 行组件 ----------------------------------------------------------------
 
   @Builder
   swipeDeleteBtn(label: string, onAction: () => void) {
@@ -294,8 +556,16 @@ struct Cleanup {
   }
 
   @Builder
+  selDotIf(tag: string) {
+    if (this.selecting) {
+      SelDot({ selected: this.isSelected(tag), dark: this.dark })
+    }
+  }
+
+  @Builder
   arrivalRow(r: CompletedTransfer) {
     Row({ space: SPACE3 }) {
+      this.selDotIf(`A:${r.id}`)
       Text('⇣')
         .fontSize(16)
         .fontColor(this.th().primary)
@@ -323,38 +593,22 @@ struct Cleanup {
     .padding(SPACE4)
     .backgroundColor(this.th().surfaceCard)
     .borderRadius(RADIUS_M)
-  }
-
-  /** 条目标题：传的是文件(目录)就叫它自己的名字；多文件 = 首名 + 等 N 项。 */
-  private arrivalTitle(r: CompletedTransfer): string {
-    if (r.sources.length === 0) {
-      return this.tt('cl.arrivals');
-    }
-    const first: string = this.basename(r.sources[0]);
-    if (r.sources.length > 1) {
-      return first + this.tt('tr.andMore', `${r.sources.length}`);
-    }
-    return first;
-  }
-
-  /** 所在目录的展示名：displayPath 失败（进程重启首查等）兜底 basename。 */
-  private arrivalDirLabel(r: CompletedTransfer): string {
-    if (this.core !== null) {
-      try {
-        const p: string = this.core.displayPath(r.destDir);
-        if (p.length > 0) {
-          return p;
-        }
-      } catch (e) {
-        // fall through
+    .onClick(() => {
+      if (this.selecting) {
+        this.toggleSelect(`A:${r.id}`);
       }
-    }
-    return this.basename(r.destDir);
+    })
+    .gesture(LongPressGesture().onAction(() => {
+      if (!this.selecting) {
+        this.beginSelecting(`A:${r.id}`);
+      }
+    }))
   }
 
   @Builder
   storageRow(it: CleanItem) {
     Row({ space: SPACE3 }) {
+      this.selDotIf(`L:${it.id}`)
       FileIcon({ name: it.name, isDir: it.isDir, dark: this.dark, box: 32 })
       Column({ space: 2 }) {
         Text(it.name).fontSize(T_FILENAME).fontColor(this.th().onSurface)
@@ -371,29 +625,83 @@ struct Cleanup {
     .padding(SPACE4)
     .backgroundColor(this.th().surfaceCard)
     .borderRadius(RADIUS_M)
+    .onClick(() => {
+      if (this.selecting) {
+        this.toggleSelect(`L:${it.id}`);
+      }
+    })
+    .gesture(LongPressGesture().onAction(() => {
+      if (!this.selecting) {
+        this.beginSelecting(`L:${it.id}`);
+      }
+    }))
+  }
+
+  @Builder
+  sheetMenuRow(label: string, primary: boolean, action: () => void) {
+    Text(label)
+      .fontSize(15)
+      .fontColor(this.th().onSurface)
+      .fontWeight(primary ? FontWeight.Medium : FontWeight.Regular)
+      .width('100%')
+      .height(46)
+      .padding({ left: 4, right: 4 })
+      .onClick(action)
   }
 
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
       Column() {
-        Row({ space: 8 }) {
-          Button('‹')
-            .fontSize(22)
-            .width(38)
-            .height(38)
-            .backgroundColor(this.th().searchFieldBg)
-            .fontColor(this.th().onSurface)
-            .onClick(() => router.back())
-          Text(this.tt('cl.title')).fontSize(T_APPBAR).fontWeight(FontWeight.Bold)
-            .fontColor(this.th().onSurface)
-            .layoutWeight(1)
-          if (this.sweeping) {
-            LoadingProgress().width(18).height(18)
+        // ---- 顶栏：常规 | 多选 ------------------------------------------------
+        if (this.selecting) {
+          Row({ space: SPACE2 }) {
+            Text(this.tt('files.selectedN', `${this.selected.length}`))
+              .fontSize(17)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(this.th().onSurface)
+              .layoutWeight(1)
+            Text(this.tt('common.selectAll')).fontSize(T_BODY).fontColor(this.th().primary)
+              .onClick(() => this.selectAll())
+            Text(this.tt('common.move')).fontSize(T_BODY).fontColor(this.th().primary)
+              .onClick(() => this.openPicker())
+            Text(this.tt('common.delete')).fontSize(T_BODY).fontColor(this.th().error)
+              .onClick(() => {
+                this.confirmKind = 'batch';
+                this.targetName = `${this.selected.length}`;
+                this.confirming = true;
+              })
+            Text('✕').fontSize(16).fontColor(this.th().onSurfaceVariant)
+              .onClick(() => this.exitSelecting())
           }
-          Text(this.tt('common.rescan')).fontSize(T_BODY).fontColor(this.th().primary).onClick(() => this.scan())
+          .width('100%')
+          .padding({ left: SCREEN_MARGIN, right: SCREEN_MARGIN, top: 8, bottom: 8 })
+        } else {
+          Row({ space: 8 }) {
+            Button('‹')
+              .fontSize(22)
+              .width(38)
+              .height(38)
+              .backgroundColor(this.th().searchFieldBg)
+              .fontColor(this.th().onSurface)
+              .onClick(() => router.back())
+            Text(this.tt('cl.title')).fontSize(T_APPBAR).fontWeight(FontWeight.Bold)
+              .fontColor(this.th().onSurface)
+              .layoutWeight(1)
+            if (this.sweeping) {
+              LoadingProgress().width(18).height(18)
+            }
+            Text(this.tt('files.menuSort', this.sortLabel())).fontSize(T_BODY)
+              .fontColor(this.th().primary)
+              .onClick(() => this.sheet = SHEET_SORT)
+            Text(this.tt('files.menuSelect')).fontSize(T_BODY).fontColor(this.th().primary)
+              .onClick(() => {
+                this.selecting = true;
+                this.selected = [];
+              })
+          }
+          .width('100%')
+          .padding({ left: SCREEN_MARGIN, right: SCREEN_MARGIN, top: 8, bottom: 8 })
         }
-        .width('100%')
-        .padding({ left: SCREEN_MARGIN, right: SCREEN_MARGIN, top: 8, bottom: 8 })
 
         if (this.error.length > 0) {
           Text(this.error).fontSize(T_BODY).fontColor(this.th().error)
@@ -512,13 +820,113 @@ struct Cleanup {
       .height('100%')
       .backgroundColor(this.th().surface)
 
+      // ---- 排序面板 ----------------------------------------------------------
+      if (this.sheet === SHEET_SORT || this.sheet === SHEET_PICK) {
+        Column() {
+          Blank().layoutWeight(1).onClick(() => this.sheet = SHEET_NONE)
+          Column({ space: SPACE3 }) {
+            if (this.sheet === SHEET_SORT) {
+              Text(this.tt('files.sortTitle')).fontSize(17).fontWeight(FontWeight.Medium)
+                .fontColor(this.th().onSurface).width('100%')
+              Divider().color(this.th().divider)
+              this.sheetMenuRow(this.tt('files.sortName'), this.sortKey === SORT_NAME, () => {
+                this.sortKey = SORT_NAME;
+                this.applySort(this.items.slice());
+                this.arrivals = this.sortArrivals(this.arrivals.slice());
+                this.sheet = SHEET_NONE;
+              })
+              this.sheetMenuRow(this.tt('files.sortTime'), this.sortKey === SORT_TIME, () => {
+                this.sortKey = SORT_TIME;
+                this.applySort(this.items.slice());
+                this.arrivals = this.sortArrivals(this.arrivals.slice());
+                this.sheet = SHEET_NONE;
+              })
+              this.sheetMenuRow(this.tt('files.sortSize'), this.sortKey === SORT_SIZE, () => {
+                this.sortKey = SORT_SIZE;
+                this.applySort(this.items.slice());
+                this.arrivals = this.sortArrivals(this.arrivals.slice());
+                this.sheet = SHEET_NONE;
+              })
+              Divider().color(this.th().divider)
+              this.sheetMenuRow(this.tt('files.asc'), this.sortAsc, () => {
+                this.sortAsc = true;
+                this.applySort(this.items.slice());
+                this.arrivals = this.sortArrivals(this.arrivals.slice());
+                this.sheet = SHEET_NONE;
+              })
+              this.sheetMenuRow(this.tt('files.desc'), !this.sortAsc, () => {
+                this.sortAsc = false;
+                this.applySort(this.items.slice());
+                this.arrivals = this.sortArrivals(this.arrivals.slice());
+                this.sheet = SHEET_NONE;
+              })
+            } else {
+              // ---- 移动目标选择器 ----------------------------------------------
+              Text(this.tt('cl.moveTitle')).fontSize(17).fontWeight(FontWeight.Medium)
+                .fontColor(this.th().onSurface).width('100%')
+              Text(this.pickCrumbs.map((_v: string, i: number) => this.crumbNameAt(i)).join(' / '))
+                .fontSize(T_SECONDARY).fontColor(this.th().onSurfaceVariant)
+                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+              Divider().color(this.th().divider)
+              List({ space: 0 }) {
+                ForEach(this.pickEntries, (e: Entry) => {
+                  ListItem() {
+                    Row({ space: SPACE2 }) {
+                      Text('📁').fontSize(16)
+                      Text(e.name).fontSize(T_FILENAME).fontColor(this.th().onSurface)
+                        .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
+                      Text('›').fontSize(16).fontColor(this.th().outline)
+                    }
+                    .width('100%')
+                    .padding({ top: SPACE3, bottom: SPACE3 })
+                    .onClick(() => {
+                      this.pickCrumbs.push(e.id);
+                      this.loadPickDir();
+                    })
+                  }
+                }, (e: Entry) => e.id)
+              }
+              .height(260)
+              .width('100%')
+              Divider().color(this.th().divider)
+              Row({ space: SPACE2 }) {
+                Button(this.tt('common.cancel'))
+                  .layoutWeight(1)
+                  .height(40)
+                  .backgroundColor(this.th().searchFieldBg)
+                  .fontColor(this.th().onSurface)
+                  .onClick(() => this.sheet = SHEET_NONE)
+                Button(this.tt('cl.moveHere'))
+                  .layoutWeight(1)
+                  .height(40)
+                  .backgroundColor(this.th().primary)
+                  .fontColor(this.th().onPrimary)
+                  .onClick(() => this.doBatchMove())
+              }
+              .width('100%')
+            }
+          }
+          .width('100%')
+          .padding(SPACE4)
+          .backgroundColor(this.th().surfaceCard)
+          .borderRadius({ topLeft: RADIUS_L, topRight: RADIUS_L })
+          .alignItems(HorizontalAlign.Start)
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#33000000')
+      }
+
+      // ---- 删除确认 ----------------------------------------------------------
       if (this.confirming) {
         Column() {
           Blank().layoutWeight(1).onClick(() => this.confirming = false)
           Column({ space: SPACE3 }) {
             Text(this.confirmKind === 'arrival'
               ? this.tt('cl.deleteArrivalTitle', this.targetName)
-              : this.tt('cl.deleteTitle', this.targetName))
+              : (this.confirmKind === 'batch'
+                ? this.tt('cl.deleteN', `${this.selected.length}`)
+                : this.tt('cl.deleteTitle', this.targetName)))
               .fontSize(17).fontWeight(FontWeight.Medium)
               .fontColor(this.th().onSurface)
             Text(this.confirmKind === 'arrival'
