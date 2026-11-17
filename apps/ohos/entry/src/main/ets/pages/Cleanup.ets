@@ -300,18 +300,20 @@ struct Cleanup {
         .fontSize(16)
         .fontColor(this.th().primary)
       Column({ space: 2 }) {
-        Text(this.destLabel(r))
+        Text(this.arrivalTitle(r))
           .fontSize(T_FILENAME)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.th().onSurface)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
-        Text(`${formatBytes(Number(r.bytesTotal))} · ${this.tt('cl.arrivedAt')} ${formatClock(Number(r.finishedAtMs))}` +
-          ` · ${Number(r.filesTotal)} ${this.tt('cl.files')}`)
+        Text(`${formatBytes(Number(r.bytesTotal))} · ${this.tt('cl.atDir', this.arrivalDirLabel(r))}` +
+          ` · ${this.tt('cl.arrivedAt')} ${formatClock(Number(r.finishedAtMs))}` +
+          (Number(r.filesTotal) > 1 ? ` · ${Number(r.filesTotal)}${this.tt('cl.files')}` : ''))
           .fontSize(T_SECONDARY)
           .fontColor(this.th().onSurfaceVariant)
           .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%')
       }
       .layoutWeight(1)
@@ -323,15 +325,31 @@ struct Cleanup {
     .borderRadius(RADIUS_M)
   }
 
-  private destLabel(r: CompletedTransfer): string {
-    const dir: string = this.basename(r.destDir);
-    if (dir.length > 0 && dir !== '/') {
-      return dir;
+  /** 条目标题：传的是文件(目录)就叫它自己的名字；多文件 = 首名 + 等 N 项。 */
+  private arrivalTitle(r: CompletedTransfer): string {
+    if (r.sources.length === 0) {
+      return this.tt('cl.arrivals');
     }
-    if (r.sources.length === 1) {
-      return this.basename(r.sources[0]);
+    const first: string = this.basename(r.sources[0]);
+    if (r.sources.length > 1) {
+      return first + this.tt('tr.andMore', `${r.sources.length}`);
     }
-    return this.tt('cl.arrivals');
+    return first;
+  }
+
+  /** 所在目录的展示名：displayPath 失败（进程重启首查等）兜底 basename。 */
+  private arrivalDirLabel(r: CompletedTransfer): string {
+    if (this.core !== null) {
+      try {
+        const p: string = this.core.displayPath(r.destDir);
+        if (p.length > 0) {
+          return p;
+        }
+      } catch (e) {
+        // fall through
+      }
+    }
+    return this.basename(r.destDir);
   }
 
   @Builder
@@ -426,7 +444,7 @@ struct Cleanup {
                           this.swipeDeleteBtn(this.tt('common.delete'), () => {
                             this.confirmKind = 'arrival';
                             this.targetId = r.id;
-                            this.targetName = this.destLabel(r);
+                            this.targetName = this.arrivalTitle(r);
                             this.confirming = true;
                           })
                         },
