@@ -29,4 +29,4 @@ cargo run -q -p sfiles-bindgen -- generate "$LIB" \
 echo "Swift  -> bindings/swift"
 echo "Kotlin -> bindings/kotlin"
 echo
-echo "Reminder: HarmonyOS later uses uniffi-bindgen-arkts against the same library."
+echo "ArkTS  -> ./scripts/gen-bindings-arkts.sh (HarmonyOS, separate tool)"

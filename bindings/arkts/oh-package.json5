@@ -1,0 +1,10 @@
+{
+  "name": "@superfiles/core",
+  "version": "0.1.0",
+  "description": "Generated UniFFI ArkTS bindings",
+  "main": "index.ets",
+  "types": "index.d.ts",
+  "dependencies": {
+    "libsuperfiles_arkts.so": "file:./types/libsuperfiles_arkts"
+  }
+}

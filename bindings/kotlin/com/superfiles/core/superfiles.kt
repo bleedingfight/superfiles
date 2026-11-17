@@ -753,7 +753,11 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_clear_index(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_clear_index_prefix(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_compress_zip(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_count_by_exts(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_create_dir(
     ): Int
@@ -762,6 +766,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_superfiles_checksum_method_superfiles_display_path(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_export_to_fd(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_extract_zip(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_favorites(
     ): Int
@@ -773,15 +779,33 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_index_dir(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_index_dir_full_with_progress(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_index_dir_with_progress(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_index_prefix_count(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_index_subtree(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_join(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_list(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_list_by_exts(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_list_by_exts_packed(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_list_cached(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_local_send_handle(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_mount_cloud(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_mount_dropbox(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_mount_google_drive(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_mount_s3(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_mount_sftp(
     ): Int
@@ -791,6 +815,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_mounts(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_pause_transfer(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_pending_transfers(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_read_bytes(
@@ -799,9 +825,13 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_record_open(
     ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_release_stream(
+    ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_remove(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_remove_favorite(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_remove_recent(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_rename(
     ): Int
@@ -812,6 +842,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_superfiles_checksum_method_superfiles_search(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_smb_list_shares(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_smb_netbios_name(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_start_copy(
     ): Int
@@ -836,6 +868,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_superfiles_checksum_method_superfiles_transfers(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_unmount(
+    ): Int
+    external fun uniffi_superfiles_checksum_method_superfiles_unpause_transfer(
     ): Int
     external fun uniffi_superfiles_checksum_method_superfiles_version(
     ): Int
@@ -911,8 +945,12 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_clear_index(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
+    external fun uniffi_superfiles_fn_method_superfiles_clear_index_prefix(`ptr`: Long,`prefix`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
     external fun uniffi_superfiles_fn_method_superfiles_compress_zip(`ptr`: Long,`sources`: RustBuffer.ByValue,`destDir`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,`method`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_count_by_exts(`ptr`: Long,`exts`: RustBuffer.ByValue,`includeHidden`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
     external fun uniffi_superfiles_fn_method_superfiles_create_dir(`ptr`: Long,`parent`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_create_file(`ptr`: Long,`parent`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -920,6 +958,8 @@ internal object UniffiLib {
     external fun uniffi_superfiles_fn_method_superfiles_display_path(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_export_to_fd(`ptr`: Long,`id`: RustBuffer.ByValue,`fd`: Int,`offset`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_superfiles_fn_method_superfiles_extract_zip(`ptr`: Long,`archiveId`: RustBuffer.ByValue,`destDir`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     external fun uniffi_superfiles_fn_method_superfiles_favorites(`ptr`: Long,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -931,15 +971,33 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_superfiles_fn_method_superfiles_index_dir(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
+    external fun uniffi_superfiles_fn_method_superfiles_index_dir_full_with_progress(`ptr`: Long,`id`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
     external fun uniffi_superfiles_fn_method_superfiles_index_dir_with_progress(`ptr`: Long,`id`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_superfiles_fn_method_superfiles_index_prefix_count(`ptr`: Long,`prefix`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_superfiles_fn_method_superfiles_index_subtree(`ptr`: Long,`id`: RustBuffer.ByValue,`listener`: Long,`incremental`: Byte,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     external fun uniffi_superfiles_fn_method_superfiles_join(`ptr`: Long,`parent`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_list(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_list_by_exts(`ptr`: Long,`exts`: RustBuffer.ByValue,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_list_by_exts_packed(`ptr`: Long,`exts`: RustBuffer.ByValue,`offset`: Int,`limit`: Int,`includeHidden`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_list_cached(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_local_send_handle(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_mount_cloud(`ptr`: Long,`provider`: RustBuffer.ByValue,`label`: RustBuffer.ByValue,`accessToken`: RustBuffer.ByValue,`refreshToken`: RustBuffer.ByValue,`clientId`: RustBuffer.ByValue,`clientSecret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_mount_dropbox(`ptr`: Long,`label`: RustBuffer.ByValue,`accessToken`: RustBuffer.ByValue,`refreshToken`: RustBuffer.ByValue,`clientId`: RustBuffer.ByValue,`clientSecret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_mount_google_drive(`ptr`: Long,`label`: RustBuffer.ByValue,`accessToken`: RustBuffer.ByValue,`refreshToken`: RustBuffer.ByValue,`clientId`: RustBuffer.ByValue,`clientSecret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_mount_s3(`ptr`: Long,`label`: RustBuffer.ByValue,`endpoint`: RustBuffer.ByValue,`region`: RustBuffer.ByValue,`bucket`: RustBuffer.ByValue,`accessKey`: RustBuffer.ByValue,`secretKey`: RustBuffer.ByValue,`sessionToken`: RustBuffer.ByValue,`pathStyle`: Byte,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_mount_sftp(`ptr`: Long,`label`: RustBuffer.ByValue,`host`: RustBuffer.ByValue,`port`: Int,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -949,6 +1007,8 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_mounts(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_pause_transfer(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_pending_transfers(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_read_bytes(`ptr`: Long,`id`: RustBuffer.ByValue,`offset`: Long,`len`: Int,uniffi_out_err: UniffiRustCallStatus, 
@@ -957,9 +1017,13 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_record_open(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
+    external fun uniffi_superfiles_fn_method_superfiles_release_stream(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_remove(`ptr`: Long,`id`: RustBuffer.ByValue,`recursive`: Byte,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_remove_favorite(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_superfiles_fn_method_superfiles_remove_recent(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_rename(`ptr`: Long,`id`: RustBuffer.ByValue,`newName`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -970,6 +1034,8 @@ internal object UniffiLib {
     external fun uniffi_superfiles_fn_method_superfiles_search(`ptr`: Long,`query`: RustBuffer.ByValue,`limit`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_smb_list_shares(`ptr`: Long,`host`: RustBuffer.ByValue,`port`: Int,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_superfiles_fn_method_superfiles_smb_netbios_name(`ptr`: Long,`host`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_start_copy(`ptr`: Long,`sources`: RustBuffer.ByValue,`destDir`: RustBuffer.ByValue,`conflict`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -995,6 +1061,8 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_unmount(`ptr`: Long,`rootId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
+    external fun uniffi_superfiles_fn_method_superfiles_unpause_transfer(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     external fun uniffi_superfiles_fn_method_superfiles_version(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_superfiles_fn_method_superfiles_write_bytes(`ptr`: Long,`id`: RustBuffer.ByValue,`offset`: Long,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1168,7 +1236,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_clear_index() and 0xFFFF) != 49058) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_clear_index_prefix() and 0xFFFF) != 57166) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_compress_zip() and 0xFFFF) != 5552) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_count_by_exts() and 0xFFFF) != 58569) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_create_dir() and 0xFFFF) != 10638) {
@@ -1181,6 +1255,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_export_to_fd() and 0xFFFF) != 242) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_extract_zip() and 0xFFFF) != 39734) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_favorites() and 0xFFFF) != 27258) {
@@ -1198,7 +1275,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_index_dir() and 0xFFFF) != 61801) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_index_dir_full_with_progress() and 0xFFFF) != 39911) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_index_dir_with_progress() and 0xFFFF) != 56713) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_index_prefix_count() and 0xFFFF) != 56131) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_index_subtree() and 0xFFFF) != 46369) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_join() and 0xFFFF) != 17171) {
@@ -1207,10 +1293,28 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_list() and 0xFFFF) != 33029) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_list_by_exts() and 0xFFFF) != 4443) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_list_by_exts_packed() and 0xFFFF) != 58002) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_list_cached() and 0xFFFF) != 43391) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_local_send_handle() and 0xFFFF) != 35404) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_mount_cloud() and 0xFFFF) != 26779) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_mount_dropbox() and 0xFFFF) != 33186) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_mount_google_drive() and 0xFFFF) != 13079) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_mount_s3() and 0xFFFF) != 41490) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_mount_sftp() and 0xFFFF) != 42724) {
@@ -1225,6 +1329,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_mounts() and 0xFFFF) != 32210) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_pause_transfer() and 0xFFFF) != 60396) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_pending_transfers() and 0xFFFF) != 25004) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1237,10 +1344,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_superfiles_checksum_method_superfiles_record_open() and 0xFFFF) != 3400) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_release_stream() and 0xFFFF) != 23727) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_remove() and 0xFFFF) != 39390) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_remove_favorite() and 0xFFFF) != 21818) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_remove_recent() and 0xFFFF) != 4841) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_rename() and 0xFFFF) != 38276) {
@@ -1256,6 +1369,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_smb_list_shares() and 0xFFFF) != 16507) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_smb_netbios_name() and 0xFFFF) != 5559) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_start_copy() and 0xFFFF) != 21211) {
@@ -1292,6 +1408,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_unmount() and 0xFFFF) != 63226) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_superfiles_checksum_method_superfiles_unpause_transfer() and 0xFFFF) != 17396) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_superfiles_checksum_method_superfiles_version() and 0xFFFF) != 44088) {
@@ -2566,9 +2685,6 @@ public object FfiConverterTypeLocalSendHandle: FfiConverter<LocalSendHandle, Lon
 //
 
 
-/**
- * The single object the app talks to.
- */
 public interface SuperFilesInterface {
     
     /**
@@ -2583,6 +2699,12 @@ public interface SuperFilesInterface {
     fun `clearIndex`()
     
     /**
+     * 索引管理：只清掉某个挂载根的索引（含子树、FTS、目录扫描状态）。
+     * 返回删除的条目数。
+     */
+    fun `clearIndexPrefix`(`prefix`: kotlin.String): kotlin.ULong
+    
+    /**
      * Zip `sources` (files or directories, walked recursively) into
      * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
      * auto-renamed away with a `-N` suffix). Streams through a bounded
@@ -2591,6 +2713,11 @@ public interface SuperFilesInterface {
      * the UI thread.
      */
     fun `compressZip`(`sources`: List<kotlin.String>, `destDir`: kotlin.String, `name`: kotlin.String, `method`: ZipMethod, `listener`: ZipProgressListener): Entry
+    
+    /**
+     * 首页分类聚合：按扩展名计数（走索引，不遍历目录树）。
+     */
+    fun `countByExts`(`exts`: List<kotlin.String>, `includeHidden`: kotlin.Boolean): kotlin.ULong
     
     fun `createDir`(`parent`: kotlin.String, `name`: kotlin.String): Entry
     
@@ -2606,6 +2733,11 @@ public interface SuperFilesInterface {
      * Android `ParcelFileDescriptor`). Returns bytes written.
      */
     fun `exportToFd`(`id`: kotlin.String, `fd`: kotlin.Int, `offset`: kotlin.ULong): kotlin.ULong
+    
+    /**
+     * 解压 zip 到目标目录（仅 .zip；同名自动重命名，防路径穿越），返回写出的条目数。
+     */
+    fun `extractZip`(`archiveId`: kotlin.String, `destDir`: kotlin.String, `listener`: ZipProgressListener): kotlin.ULong
     
     /**
      * 收藏列表（按收藏时间倒序；已删除的路径自动跳过）。
@@ -2633,6 +2765,12 @@ public interface SuperFilesInterface {
     fun `indexDir`(`id`: kotlin.String): kotlin.UInt
     
     /**
+     * 手动「重建索引」：忽略 mtime 增量判断，整棵重新列举（仍然会落
+     * `dir_states`，之后的自动扫描继续走增量）。网络存储首次建索引也走这条。
+     */
+    fun `indexDirFullWithProgress`(`id`: kotlin.String, `listener`: IndexProgressListener): kotlin.ULong
+    
+    /**
      * Like [`index_dir`](Self::index_dir) but (a) reports progress on
      * `listener`, (b) skips unreadable directories, and (c) is **incremental**:
      * child directories whose mtime is unchanged since the last scan are not
@@ -2643,9 +2781,30 @@ public interface SuperFilesInterface {
      */
     fun `indexDirWithProgress`(`id`: kotlin.String, `listener`: IndexProgressListener): kotlin.ULong
     
+    /**
+     * 索引管理：某个挂载根下已索引的条目数（0 = 还没有索引）。
+     */
+    fun `indexPrefixCount`(`prefix`: kotlin.String): kotlin.ULong
+    
+    fun `indexSubtree`(`id`: kotlin.String, `listener`: IndexProgressListener, `incremental`: kotlin.Boolean): kotlin.ULong
+    
     fun `join`(`parent`: kotlin.String, `name`: kotlin.String): kotlin.String
     
     fun `list`(`id`: kotlin.String): List<Entry>
+    
+    /**
+     * 首页分类聚合：按扩展名列出文件（走索引，按修改时间倒序）。
+     */
+    fun `listByExts`(`exts`: List<kotlin.String>, `limit`: kotlin.UInt): List<Entry>
+    
+    /**
+     * 分类页快速通道：同一份 `listByExts` 结果，但走紧凑字节流。
+     *
+     * uniffi 的 `Vec<Entry>` 会对每个字符串各做一次 JNA 调用；9000 条结果
+     * 实测 360ms，而 SQL 本身只有 11ms。这里一次拷贝整块 buffer，
+     * 解码由 Kotlin 侧 `PackedEntries` 完成。
+     */
+    fun `listByExtsPacked`(`exts`: List<kotlin.String>, `offset`: kotlin.UInt, `limit`: kotlin.UInt, `includeHidden`: kotlin.Boolean): kotlin.ByteArray
     
     /**
      * 离线缓存列举（M1 离线浏览）：返回索引中 `id` 的直接子项与上次更新
@@ -2655,6 +2814,32 @@ public interface SuperFilesInterface {
     fun `listCached`(`id`: kotlin.String): CachedListing
     
     fun `localSendHandle`(): LocalSendHandle?
+    
+    /**
+     * Mount a cloud drive by provider id (`onedrive` / `box`; the Google and
+     * Dropbox specific entry points stay for compatibility).
+     * Returns the mount root id (`onedrive://root`, `box://0`).
+     */
+    fun `mountCloud`(`provider`: kotlin.String, `label`: kotlin.String, `accessToken`: kotlin.String, `refreshToken`: kotlin.String, `clientId`: kotlin.String, `clientSecret`: kotlin.String): kotlin.String
+    
+    /**
+     * Mount a Dropbox account; returns its root id (`dropbox://root`).
+     * `refresh_token` / `client_secret` may be empty when the caller holds no
+     * refresh grant (access token only).
+     */
+    fun `mountDropbox`(`label`: kotlin.String, `accessToken`: kotlin.String, `refreshToken`: kotlin.String, `clientId`: kotlin.String, `clientSecret`: kotlin.String): kotlin.String
+    
+    /**
+     * Mount a Google Drive account; returns its root id (`gdrive://root`).
+     * `refresh_token` / `client_secret` may be empty when the caller holds no
+     * refresh grant (access token only).
+     */
+    fun `mountGoogleDrive`(`label`: kotlin.String, `accessToken`: kotlin.String, `refreshToken`: kotlin.String, `clientId`: kotlin.String, `clientSecret`: kotlin.String): kotlin.String
+    
+    /**
+     * Mount an S3-compatible bucket; returns its root id (`s3://`).
+     */
+    fun `mountS3`(`label`: kotlin.String, `endpoint`: kotlin.String, `region`: kotlin.String, `bucket`: kotlin.String, `accessKey`: kotlin.String, `secretKey`: kotlin.String, `sessionToken`: kotlin.String, `pathStyle`: kotlin.Boolean): kotlin.String
     
     /**
      * Mount an SFTP host (password auth for now; key auth lands with the UI).
@@ -2676,6 +2861,13 @@ public interface SuperFilesInterface {
      * Every mounted connection (local root excluded).
      */
     fun `mounts`(): List<MountInfo>
+    
+    /**
+     * 暂停一个进行中的任务（Queued/Running 均可）：状态立即变 Paused，工作
+     * 循环在最近的块边界停摆；进度保留，后台任务占位不释放。对已结束（终态）
+     * 的任务是 no-op。
+     */
+    fun `pauseTransfer`(`id`: kotlin.String)
     
     /**
      * Transfers a previous run didn't finish (crash / killed app), restored
@@ -2700,9 +2892,20 @@ public interface SuperFilesInterface {
      */
     fun `recordOpen`(`id`: kotlin.String)
     
+    /**
+     * Playback stopped: drop the progressive cache for `id` (temp file deletion).
+     * Safe to call repeatedly and for files that were never cached.
+     */
+    fun `releaseStream`(`id`: kotlin.String)
+    
     fun `remove`(`id`: kotlin.String, `recursive`: kotlin.Boolean)
     
     fun `removeFavorite`(`id`: kotlin.String)
+    
+    /**
+     * 只移除「最近打开」记录，不删除原文件。
+     */
+    fun `removeRecent`(`id`: kotlin.String)
     
     fun `rename`(`id`: kotlin.String, `newName`: kotlin.String): Entry
     
@@ -2734,6 +2937,11 @@ public interface SuperFilesInterface {
      * 枚举 SMB 服务器上可访问的共享名（UI「列出共享」用；需要可达 + 凭据有效）。
      */
     fun `smbListShares`(`host`: kotlin.String, `port`: kotlin.UInt, `username`: kotlin.String, `password`: kotlin.String): List<kotlin.String>
+    
+    /**
+     * 查询 SMB 主机的 NetBIOS 主机名（扫描列表展示用；拿不到返回 None）。
+     */
+    fun `smbNetbiosName`(`host`: kotlin.String): kotlin.String?
     
     /**
      * Start a background copy. Returns a transfer id for polling/cancelling.
@@ -2792,6 +3000,12 @@ public interface SuperFilesInterface {
      */
     fun `unmount`(`rootId`: kotlin.String): kotlin.Boolean
     
+    /**
+     * 解除暂停继续跑。与 `resumeTransfer`（崩溃后恢复登记的断点任务）不同，
+     * 这只作用于 registry 里还活着的 Paused 任务。
+     */
+    fun `unpauseTransfer`(`id`: kotlin.String)
+    
     fun `version`(): kotlin.String
     
     fun `writeBytes`(`id`: kotlin.String, `offset`: kotlin.ULong, `data`: kotlin.ByteArray)
@@ -2799,9 +3013,6 @@ public interface SuperFilesInterface {
     companion object
 }
 
-/**
- * The single object the app talks to.
- */
 open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
 {
 
@@ -2963,6 +3174,25 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
 
     
     /**
+     * 索引管理：只清掉某个挂载根的索引（含子树、FTS、目录扫描状态）。
+     * 返回删除的条目数。
+     */
+    @Throws(SfException::class)override fun `clearIndexPrefix`(`prefix`: kotlin.String): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_clear_index_prefix(
+        it,
+        
+        FfiConverterString.lower(`prefix`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Zip `sources` (files or directories, walked recursively) into
      * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
      * auto-renamed away with a `-N` suffix). Streams through a bounded
@@ -2982,6 +3212,24 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
         FfiConverterString.lower(`name`),
         FfiConverterTypeZipMethod.lower(`method`),
         FfiConverterTypeZipProgressListener.lower(`listener`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * 首页分类聚合：按扩展名计数（走索引，不遍历目录树）。
+     */override fun `countByExts`(`exts`: List<kotlin.String>, `includeHidden`: kotlin.Boolean): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_count_by_exts(
+        it,
+        
+        FfiConverterSequenceString.lower(`exts`),
+        FfiConverterBoolean.lower(`includeHidden`),_status)
 }
     }
     )
@@ -3052,6 +3300,26 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
         FfiConverterString.lower(`id`),
         FfiConverterInt.lower(`fd`),
         FfiConverterULong.lower(`offset`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * 解压 zip 到目标目录（仅 .zip；同名自动重命名，防路径穿越），返回写出的条目数。
+     */
+    @Throws(SfException::class)override fun `extractZip`(`archiveId`: kotlin.String, `destDir`: kotlin.String, `listener`: ZipProgressListener): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_extract_zip(
+        it,
+        
+        FfiConverterString.lower(`archiveId`),
+        FfiConverterString.lower(`destDir`),
+        FfiConverterTypeZipProgressListener.lower(`listener`),_status)
 }
     }
     )
@@ -3148,6 +3416,26 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
 
     
     /**
+     * 手动「重建索引」：忽略 mtime 增量判断，整棵重新列举（仍然会落
+     * `dir_states`，之后的自动扫描继续走增量）。网络存储首次建索引也走这条。
+     */
+    @Throws(SfException::class)override fun `indexDirFullWithProgress`(`id`: kotlin.String, `listener`: IndexProgressListener): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_index_dir_full_with_progress(
+        it,
+        
+        FfiConverterString.lower(`id`),
+        FfiConverterTypeIndexProgressListener.lower(`listener`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Like [`index_dir`](Self::index_dir) but (a) reports progress on
      * `listener`, (b) skips unreadable directories, and (c) is **incremental**:
      * child directories whose mtime is unchanged since the last scan are not
@@ -3165,6 +3453,40 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
         
         FfiConverterString.lower(`id`),
         FfiConverterTypeIndexProgressListener.lower(`listener`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * 索引管理：某个挂载根下已索引的条目数（0 = 还没有索引）。
+     */override fun `indexPrefixCount`(`prefix`: kotlin.String): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_index_prefix_count(
+        it,
+        
+        FfiConverterString.lower(`prefix`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(SfException::class)override fun `indexSubtree`(`id`: kotlin.String, `listener`: IndexProgressListener, `incremental`: kotlin.Boolean): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_index_subtree(
+        it,
+        
+        FfiConverterString.lower(`id`),
+        FfiConverterTypeIndexProgressListener.lower(`listener`),
+        FfiConverterBoolean.lower(`incremental`),_status)
 }
     }
     )
@@ -3203,6 +3525,50 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
 
     
     /**
+     * 首页分类聚合：按扩展名列出文件（走索引，按修改时间倒序）。
+     */
+    @Throws(SfException::class)override fun `listByExts`(`exts`: List<kotlin.String>, `limit`: kotlin.UInt): List<Entry> {
+            return FfiConverterSequenceTypeEntry.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_list_by_exts(
+        it,
+        
+        FfiConverterSequenceString.lower(`exts`),
+        FfiConverterUInt.lower(`limit`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * 分类页快速通道：同一份 `listByExts` 结果，但走紧凑字节流。
+     *
+     * uniffi 的 `Vec<Entry>` 会对每个字符串各做一次 JNA 调用；9000 条结果
+     * 实测 360ms，而 SQL 本身只有 11ms。这里一次拷贝整块 buffer，
+     * 解码由 Kotlin 侧 `PackedEntries` 完成。
+     */
+    @Throws(SfException::class)override fun `listByExtsPacked`(`exts`: List<kotlin.String>, `offset`: kotlin.UInt, `limit`: kotlin.UInt, `includeHidden`: kotlin.Boolean): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_list_by_exts_packed(
+        it,
+        
+        FfiConverterSequenceString.lower(`exts`),
+        FfiConverterUInt.lower(`offset`),
+        FfiConverterUInt.lower(`limit`),
+        FfiConverterBoolean.lower(`includeHidden`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * 离线缓存列举（M1 离线浏览）：返回索引中 `id` 的直接子项与上次更新
      * 时间。`entries` 为空且 `listedAtMs` 为 None 表示无缓存可用；UI 在
      * 实时 `list` 失败时调用，并把结果标注为「过期缓存」。
@@ -3227,6 +3593,104 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
     UniffiLib.uniffi_superfiles_fn_method_superfiles_local_send_handle(
         it,
         _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Mount a cloud drive by provider id (`onedrive` / `box`; the Google and
+     * Dropbox specific entry points stay for compatibility).
+     * Returns the mount root id (`onedrive://root`, `box://0`).
+     */
+    @Throws(SfException::class)override fun `mountCloud`(`provider`: kotlin.String, `label`: kotlin.String, `accessToken`: kotlin.String, `refreshToken`: kotlin.String, `clientId`: kotlin.String, `clientSecret`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_mount_cloud(
+        it,
+        
+        FfiConverterString.lower(`provider`),
+        FfiConverterString.lower(`label`),
+        FfiConverterString.lower(`accessToken`),
+        FfiConverterString.lower(`refreshToken`),
+        FfiConverterString.lower(`clientId`),
+        FfiConverterString.lower(`clientSecret`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Mount a Dropbox account; returns its root id (`dropbox://root`).
+     * `refresh_token` / `client_secret` may be empty when the caller holds no
+     * refresh grant (access token only).
+     */
+    @Throws(SfException::class)override fun `mountDropbox`(`label`: kotlin.String, `accessToken`: kotlin.String, `refreshToken`: kotlin.String, `clientId`: kotlin.String, `clientSecret`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_mount_dropbox(
+        it,
+        
+        FfiConverterString.lower(`label`),
+        FfiConverterString.lower(`accessToken`),
+        FfiConverterString.lower(`refreshToken`),
+        FfiConverterString.lower(`clientId`),
+        FfiConverterString.lower(`clientSecret`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Mount a Google Drive account; returns its root id (`gdrive://root`).
+     * `refresh_token` / `client_secret` may be empty when the caller holds no
+     * refresh grant (access token only).
+     */
+    @Throws(SfException::class)override fun `mountGoogleDrive`(`label`: kotlin.String, `accessToken`: kotlin.String, `refreshToken`: kotlin.String, `clientId`: kotlin.String, `clientSecret`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_mount_google_drive(
+        it,
+        
+        FfiConverterString.lower(`label`),
+        FfiConverterString.lower(`accessToken`),
+        FfiConverterString.lower(`refreshToken`),
+        FfiConverterString.lower(`clientId`),
+        FfiConverterString.lower(`clientSecret`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Mount an S3-compatible bucket; returns its root id (`s3://`).
+     */
+    @Throws(SfException::class)override fun `mountS3`(`label`: kotlin.String, `endpoint`: kotlin.String, `region`: kotlin.String, `bucket`: kotlin.String, `accessKey`: kotlin.String, `secretKey`: kotlin.String, `sessionToken`: kotlin.String, `pathStyle`: kotlin.Boolean): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_mount_s3(
+        it,
+        
+        FfiConverterString.lower(`label`),
+        FfiConverterString.lower(`endpoint`),
+        FfiConverterString.lower(`region`),
+        FfiConverterString.lower(`bucket`),
+        FfiConverterString.lower(`accessKey`),
+        FfiConverterString.lower(`secretKey`),
+        FfiConverterString.lower(`sessionToken`),
+        FfiConverterBoolean.lower(`pathStyle`),_status)
 }
     }
     )
@@ -3318,6 +3782,24 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
 
     
     /**
+     * 暂停一个进行中的任务（Queued/Running 均可）：状态立即变 Paused，工作
+     * 循环在最近的块边界停摆；进度保留，后台任务占位不释放。对已结束（终态）
+     * 的任务是 no-op。
+     */override fun `pauseTransfer`(`id`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_pause_transfer(
+        it,
+        
+        FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * Transfers a previous run didn't finish (crash / killed app), restored
      * from the index. Ids already tracked by this process are excluded —
      * those are live and show up in `transfers()` instead. Errors when no
@@ -3392,6 +3874,23 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
     
 
     
+    /**
+     * Playback stopped: drop the progressive cache for `id` (temp file deletion).
+     * Safe to call repeatedly and for files that were never cached.
+     */override fun `releaseStream`(`id`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_release_stream(
+        it,
+        
+        FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
     @Throws(SfException::class)override fun `remove`(`id`: kotlin.String, `recursive`: kotlin.Boolean)
         = 
     callWithHandle {
@@ -3412,6 +3911,23 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
     callWithHandle {
     uniffiRustCallWithError(SfException) { _status ->
     UniffiLib.uniffi_superfiles_fn_method_superfiles_remove_favorite(
+        it,
+        
+        FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * 只移除「最近打开」记录，不删除原文件。
+     */
+    @Throws(SfException::class)override fun `removeRecent`(`id`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(SfException) { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_remove_recent(
         it,
         
         FfiConverterString.lower(`id`),_status)
@@ -3512,6 +4028,23 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
         FfiConverterUInt.lower(`port`),
         FfiConverterString.lower(`username`),
         FfiConverterString.lower(`password`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * 查询 SMB 主机的 NetBIOS 主机名（扫描列表展示用；拿不到返回 None）。
+     */override fun `smbNetbiosName`(`host`: kotlin.String): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_smb_netbios_name(
+        it,
+        
+        FfiConverterString.lower(`host`),_status)
 }
     }
     )
@@ -3727,6 +4260,23 @@ open class SuperFiles: Disposable, AutoCloseable, SuperFilesInterface
     }
     )
     }
+    
+
+    
+    /**
+     * 解除暂停继续跑。与 `resumeTransfer`（崩溃后恢复登记的断点任务）不同，
+     * 这只作用于 registry 里还活着的 Paused 任务。
+     */override fun `unpauseTransfer`(`id`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_superfiles_fn_method_superfiles_unpause_transfer(
+        it,
+        
+        FfiConverterString.lower(`id`),_status)
+}
+    }
+    
     
 
     override fun `version`(): kotlin.String {
@@ -4785,6 +5335,16 @@ data class TransferSnapshot (
     var `current`: kotlin.String?
     , 
     var `error`: kotlin.String?
+    , 
+    /**
+     * 任务创建（开始）时间，epoch 毫秒。
+     */
+    var `startedAtMs`: kotlin.Long
+    , 
+    /**
+     * 结束时间（完成/失败/取消），未结束为 None。
+     */
+    var `finishedAtMs`: kotlin.Long?
     
 ){
     
@@ -4809,6 +5369,8 @@ public object FfiConverterTypeTransferSnapshot: FfiConverterRustBuffer<TransferS
             FfiConverterULong.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterOptionalLong.read(buf),
         )
     }
 
@@ -4820,7 +5382,9 @@ public object FfiConverterTypeTransferSnapshot: FfiConverterRustBuffer<TransferS
             FfiConverterULong.allocationSize(value.`filesDone`) +
             FfiConverterULong.allocationSize(value.`filesTotal`) +
             FfiConverterOptionalString.allocationSize(value.`current`) +
-            FfiConverterOptionalString.allocationSize(value.`error`)
+            FfiConverterOptionalString.allocationSize(value.`error`) +
+            FfiConverterLong.allocationSize(value.`startedAtMs`) +
+            FfiConverterOptionalLong.allocationSize(value.`finishedAtMs`)
     )
 
     override fun write(value: TransferSnapshot, buf: ByteBuffer) {
@@ -4832,6 +5396,8 @@ public object FfiConverterTypeTransferSnapshot: FfiConverterRustBuffer<TransferS
             FfiConverterULong.write(value.`filesTotal`, buf)
             FfiConverterOptionalString.write(value.`current`, buf)
             FfiConverterOptionalString.write(value.`error`, buf)
+            FfiConverterLong.write(value.`startedAtMs`, buf)
+            FfiConverterOptionalLong.write(value.`finishedAtMs`, buf)
     }
 }
 
@@ -5134,6 +5700,10 @@ enum class TransferState {
     
     QUEUED,
     RUNNING,
+    /**
+     * 用户暂停（非终态）：可 unpause 继续、cancel 终止。
+     */
+    PAUSED,
     COMPLETED,
     FAILED,
     CANCELLED;

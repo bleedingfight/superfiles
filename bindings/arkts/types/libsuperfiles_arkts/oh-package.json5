@@ -1,0 +1,6 @@
+{
+  "name": "libsuperfiles_arkts.so",
+  "version": "0.1.0",
+  "types": "./Index.d.ts",
+  "description": "Generated UniFFI ArkTS native module types"
+}

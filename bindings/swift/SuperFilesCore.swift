@@ -1118,9 +1118,6 @@ public func FfiConverterTypeLocalSendHandle_lower(_ value: LocalSendHandle) -> U
 
 
 
-/**
- * The single object the app talks to.
- */
 public protocol SuperFilesProtocol: AnyObject, Sendable {
     
     /**
@@ -1135,6 +1132,12 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
     func clearIndex() throws 
     
     /**
+     * 索引管理：只清掉某个挂载根的索引（含子树、FTS、目录扫描状态）。
+     * 返回删除的条目数。
+     */
+    func clearIndexPrefix(prefix: String) throws  -> UInt64
+    
+    /**
      * Zip `sources` (files or directories, walked recursively) into
      * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
      * auto-renamed away with a `-N` suffix). Streams through a bounded
@@ -1143,6 +1146,11 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
      * the UI thread.
      */
     func compressZip(sources: [String], destDir: String, name: String, method: ZipMethod, listener: ZipProgressListener) throws  -> Entry
+    
+    /**
+     * 首页分类聚合：按扩展名计数（走索引，不遍历目录树）。
+     */
+    func countByExts(exts: [String], includeHidden: Bool)  -> UInt64
     
     func createDir(parent: String, name: String) throws  -> Entry
     
@@ -1158,6 +1166,11 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
      * Android `ParcelFileDescriptor`). Returns bytes written.
      */
     func exportToFd(id: String, fd: Int32, offset: UInt64) throws  -> UInt64
+    
+    /**
+     * 解压 zip 到目标目录（仅 .zip；同名自动重命名，防路径穿越），返回写出的条目数。
+     */
+    func extractZip(archiveId: String, destDir: String, listener: ZipProgressListener) throws  -> UInt64
     
     /**
      * 收藏列表（按收藏时间倒序；已删除的路径自动跳过）。
@@ -1185,6 +1198,12 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
     func indexDir(id: String) throws  -> UInt32
     
     /**
+     * 手动「重建索引」：忽略 mtime 增量判断，整棵重新列举（仍然会落
+     * `dir_states`，之后的自动扫描继续走增量）。网络存储首次建索引也走这条。
+     */
+    func indexDirFullWithProgress(id: String, listener: IndexProgressListener) throws  -> UInt64
+    
+    /**
      * Like [`index_dir`](Self::index_dir) but (a) reports progress on
      * `listener`, (b) skips unreadable directories, and (c) is **incremental**:
      * child directories whose mtime is unchanged since the last scan are not
@@ -1195,9 +1214,30 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
      */
     func indexDirWithProgress(id: String, listener: IndexProgressListener) throws  -> UInt64
     
+    /**
+     * 索引管理：某个挂载根下已索引的条目数（0 = 还没有索引）。
+     */
+    func indexPrefixCount(prefix: String)  -> UInt64
+    
+    func indexSubtree(id: String, listener: IndexProgressListener, incremental: Bool) throws  -> UInt64
+    
     func join(parent: String, name: String)  -> String
     
     func list(id: String) throws  -> [Entry]
+    
+    /**
+     * 首页分类聚合：按扩展名列出文件（走索引，按修改时间倒序）。
+     */
+    func listByExts(exts: [String], limit: UInt32) throws  -> [Entry]
+    
+    /**
+     * 分类页快速通道：同一份 `listByExts` 结果，但走紧凑字节流。
+     *
+     * uniffi 的 `Vec<Entry>` 会对每个字符串各做一次 JNA 调用；9000 条结果
+     * 实测 360ms，而 SQL 本身只有 11ms。这里一次拷贝整块 buffer，
+     * 解码由 Kotlin 侧 `PackedEntries` 完成。
+     */
+    func listByExtsPacked(exts: [String], offset: UInt32, limit: UInt32, includeHidden: Bool) throws  -> Data
     
     /**
      * 离线缓存列举（M1 离线浏览）：返回索引中 `id` 的直接子项与上次更新
@@ -1207,6 +1247,32 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
     func listCached(id: String)  -> CachedListing
     
     func localSendHandle()  -> LocalSendHandle?
+    
+    /**
+     * Mount a cloud drive by provider id (`onedrive` / `box`; the Google and
+     * Dropbox specific entry points stay for compatibility).
+     * Returns the mount root id (`onedrive://root`, `box://0`).
+     */
+    func mountCloud(provider: String, label: String, accessToken: String, refreshToken: String, clientId: String, clientSecret: String) throws  -> String
+    
+    /**
+     * Mount a Dropbox account; returns its root id (`dropbox://root`).
+     * `refresh_token` / `client_secret` may be empty when the caller holds no
+     * refresh grant (access token only).
+     */
+    func mountDropbox(label: String, accessToken: String, refreshToken: String, clientId: String, clientSecret: String) throws  -> String
+    
+    /**
+     * Mount a Google Drive account; returns its root id (`gdrive://root`).
+     * `refresh_token` / `client_secret` may be empty when the caller holds no
+     * refresh grant (access token only).
+     */
+    func mountGoogleDrive(label: String, accessToken: String, refreshToken: String, clientId: String, clientSecret: String) throws  -> String
+    
+    /**
+     * Mount an S3-compatible bucket; returns its root id (`s3://`).
+     */
+    func mountS3(label: String, endpoint: String, region: String, bucket: String, accessKey: String, secretKey: String, sessionToken: String, pathStyle: Bool) throws  -> String
     
     /**
      * Mount an SFTP host (password auth for now; key auth lands with the UI).
@@ -1228,6 +1294,13 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
      * Every mounted connection (local root excluded).
      */
     func mounts()  -> [MountInfo]
+    
+    /**
+     * 暂停一个进行中的任务（Queued/Running 均可）：状态立即变 Paused，工作
+     * 循环在最近的块边界停摆；进度保留，后台任务占位不释放。对已结束（终态）
+     * 的任务是 no-op。
+     */
+    func pauseTransfer(id: String) 
     
     /**
      * Transfers a previous run didn't finish (crash / killed app), restored
@@ -1252,9 +1325,20 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
      */
     func recordOpen(id: String) throws 
     
+    /**
+     * Playback stopped: drop the progressive cache for `id` (temp file deletion).
+     * Safe to call repeatedly and for files that were never cached.
+     */
+    func releaseStream(id: String) 
+    
     func remove(id: String, recursive: Bool) throws 
     
     func removeFavorite(id: String) throws 
+    
+    /**
+     * 只移除「最近打开」记录，不删除原文件。
+     */
+    func removeRecent(id: String) throws 
     
     func rename(id: String, newName: String) throws  -> Entry
     
@@ -1286,6 +1370,11 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
      * 枚举 SMB 服务器上可访问的共享名（UI「列出共享」用；需要可达 + 凭据有效）。
      */
     func smbListShares(host: String, port: UInt32, username: String, password: String) throws  -> [String]
+    
+    /**
+     * 查询 SMB 主机的 NetBIOS 主机名（扫描列表展示用；拿不到返回 None）。
+     */
+    func smbNetbiosName(host: String)  -> String?
     
     /**
      * Start a background copy. Returns a transfer id for polling/cancelling.
@@ -1344,14 +1433,17 @@ public protocol SuperFilesProtocol: AnyObject, Sendable {
      */
     func unmount(rootId: String)  -> Bool
     
+    /**
+     * 解除暂停继续跑。与 `resumeTransfer`（崩溃后恢复登记的断点任务）不同，
+     * 这只作用于 registry 里还活着的 Paused 任务。
+     */
+    func unpauseTransfer(id: String) 
+    
     func version()  -> String
     
     func writeBytes(id: String, offset: UInt64, data: Data) throws 
     
 }
-/**
- * The single object the app talks to.
- */
 open class SuperFiles: SuperFilesProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
 
@@ -1461,6 +1553,20 @@ open func clearIndex()throws   {try rustCallWithError(FfiConverterTypeSfError_li
 }
     
     /**
+     * 索引管理：只清掉某个挂载根的索引（含子树、FTS、目录扫描状态）。
+     * 返回删除的条目数。
+     */
+open func clearIndexPrefix(prefix: String)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_clear_index_prefix(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(prefix),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Zip `sources` (files or directories, walked recursively) into
      * `<dest_dir>/<name>` (`.zip` appended when missing; existing files are
      * auto-renamed away with a `-N` suffix). Streams through a bounded
@@ -1478,6 +1584,20 @@ open func compressZip(sources: [String], destDir: String, name: String, method: 
         FfiConverterString.lower(name),
         FfiConverterTypeZipMethod_lower(method),
         FfiConverterTypeZipProgressListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * 首页分类聚合：按扩展名计数（走索引，不遍历目录树）。
+     */
+open func countByExts(exts: [String], includeHidden: Bool) -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_count_by_exts(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceString.lower(exts),
+        FfiConverterBool.lower(includeHidden),uniffiCallStatus
     )
 })
 }
@@ -1529,6 +1649,21 @@ open func exportToFd(id: String, fd: Int32, offset: UInt64)throws  -> UInt64  {
         FfiConverterString.lower(id),
         FfiConverterInt32.lower(fd),
         FfiConverterUInt64.lower(offset),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * 解压 zip 到目标目录（仅 .zip；同名自动重命名，防路径穿越），返回写出的条目数。
+     */
+open func extractZip(archiveId: String, destDir: String, listener: ZipProgressListener)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_extract_zip(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(archiveId),
+        FfiConverterString.lower(destDir),
+        FfiConverterTypeZipProgressListener_lower(listener),uniffiCallStatus
     )
 })
 }
@@ -1599,6 +1734,21 @@ open func indexDir(id: String)throws  -> UInt32  {
 }
     
     /**
+     * 手动「重建索引」：忽略 mtime 增量判断，整棵重新列举（仍然会落
+     * `dir_states`，之后的自动扫描继续走增量）。网络存储首次建索引也走这条。
+     */
+open func indexDirFullWithProgress(id: String, listener: IndexProgressListener)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_index_dir_full_with_progress(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),
+        FfiConverterTypeIndexProgressListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Like [`index_dir`](Self::index_dir) but (a) reports progress on
      * `listener`, (b) skips unreadable directories, and (c) is **incremental**:
      * child directories whose mtime is unchanged since the last scan are not
@@ -1614,6 +1764,31 @@ open func indexDirWithProgress(id: String, listener: IndexProgressListener)throw
             self.uniffiCloneHandle(),
         FfiConverterString.lower(id),
         FfiConverterTypeIndexProgressListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * 索引管理：某个挂载根下已索引的条目数（0 = 还没有索引）。
+     */
+open func indexPrefixCount(prefix: String) -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_index_prefix_count(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(prefix),uniffiCallStatus
+    )
+})
+}
+    
+open func indexSubtree(id: String, listener: IndexProgressListener, incremental: Bool)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_index_subtree(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),
+        FfiConverterTypeIndexProgressListener_lower(listener),
+        FfiConverterBool.lower(incremental),uniffiCallStatus
     )
 })
 }
@@ -1640,6 +1815,40 @@ open func list(id: String)throws  -> [Entry]  {
 }
     
     /**
+     * 首页分类聚合：按扩展名列出文件（走索引，按修改时间倒序）。
+     */
+open func listByExts(exts: [String], limit: UInt32)throws  -> [Entry]  {
+    return try  FfiConverterSequenceTypeEntry.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_list_by_exts(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceString.lower(exts),
+        FfiConverterUInt32.lower(limit),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * 分类页快速通道：同一份 `listByExts` 结果，但走紧凑字节流。
+     *
+     * uniffi 的 `Vec<Entry>` 会对每个字符串各做一次 JNA 调用；9000 条结果
+     * 实测 360ms，而 SQL 本身只有 11ms。这里一次拷贝整块 buffer，
+     * 解码由 Kotlin 侧 `PackedEntries` 完成。
+     */
+open func listByExtsPacked(exts: [String], offset: UInt32, limit: UInt32, includeHidden: Bool)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_list_by_exts_packed(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceString.lower(exts),
+        FfiConverterUInt32.lower(offset),
+        FfiConverterUInt32.lower(limit),
+        FfiConverterBool.lower(includeHidden),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * 离线缓存列举（M1 离线浏览）：返回索引中 `id` 的直接子项与上次更新
      * 时间。`entries` 为空且 `listedAtMs` 为 None 表示无缓存可用；UI 在
      * 实时 `list` 失败时调用，并把结果标注为「过期缓存」。
@@ -1659,6 +1868,84 @@ open func localSendHandle() -> LocalSendHandle?  {
         uniffiCallStatus in
     uniffi_superfiles_fn_method_superfiles_local_send_handle(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Mount a cloud drive by provider id (`onedrive` / `box`; the Google and
+     * Dropbox specific entry points stay for compatibility).
+     * Returns the mount root id (`onedrive://root`, `box://0`).
+     */
+open func mountCloud(provider: String, label: String, accessToken: String, refreshToken: String, clientId: String, clientSecret: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_mount_cloud(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(provider),
+        FfiConverterString.lower(label),
+        FfiConverterString.lower(accessToken),
+        FfiConverterString.lower(refreshToken),
+        FfiConverterString.lower(clientId),
+        FfiConverterString.lower(clientSecret),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Mount a Dropbox account; returns its root id (`dropbox://root`).
+     * `refresh_token` / `client_secret` may be empty when the caller holds no
+     * refresh grant (access token only).
+     */
+open func mountDropbox(label: String, accessToken: String, refreshToken: String, clientId: String, clientSecret: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_mount_dropbox(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(label),
+        FfiConverterString.lower(accessToken),
+        FfiConverterString.lower(refreshToken),
+        FfiConverterString.lower(clientId),
+        FfiConverterString.lower(clientSecret),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Mount a Google Drive account; returns its root id (`gdrive://root`).
+     * `refresh_token` / `client_secret` may be empty when the caller holds no
+     * refresh grant (access token only).
+     */
+open func mountGoogleDrive(label: String, accessToken: String, refreshToken: String, clientId: String, clientSecret: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_mount_google_drive(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(label),
+        FfiConverterString.lower(accessToken),
+        FfiConverterString.lower(refreshToken),
+        FfiConverterString.lower(clientId),
+        FfiConverterString.lower(clientSecret),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Mount an S3-compatible bucket; returns its root id (`s3://`).
+     */
+open func mountS3(label: String, endpoint: String, region: String, bucket: String, accessKey: String, secretKey: String, sessionToken: String, pathStyle: Bool)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_mount_s3(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(label),
+        FfiConverterString.lower(endpoint),
+        FfiConverterString.lower(region),
+        FfiConverterString.lower(bucket),
+        FfiConverterString.lower(accessKey),
+        FfiConverterString.lower(secretKey),
+        FfiConverterString.lower(sessionToken),
+        FfiConverterBool.lower(pathStyle),uniffiCallStatus
     )
 })
 }
@@ -1728,6 +2015,20 @@ open func mounts() -> [MountInfo]  {
 }
     
     /**
+     * 暂停一个进行中的任务（Queued/Running 均可）：状态立即变 Paused，工作
+     * 循环在最近的块边界停摆；进度保留，后台任务占位不释放。对已结束（终态）
+     * 的任务是 no-op。
+     */
+open func pauseTransfer(id: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_pause_transfer(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * Transfers a previous run didn't finish (crash / killed app), restored
      * from the index. Ids already tracked by this process are excluded —
      * those are live and show up in `transfers()` instead. Errors when no
@@ -1782,6 +2083,19 @@ open func recordOpen(id: String)throws   {try rustCallWithError(FfiConverterType
 }
 }
     
+    /**
+     * Playback stopped: drop the progressive cache for `id` (temp file deletion).
+     * Safe to call repeatedly and for files that were never cached.
+     */
+open func releaseStream(id: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_release_stream(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
 open func remove(id: String, recursive: Bool)throws   {try rustCallWithError(FfiConverterTypeSfError_lift) {
         uniffiCallStatus in
     uniffi_superfiles_fn_method_superfiles_remove(
@@ -1795,6 +2109,18 @@ open func remove(id: String, recursive: Bool)throws   {try rustCallWithError(Ffi
 open func removeFavorite(id: String)throws   {try rustCallWithError(FfiConverterTypeSfError_lift) {
         uniffiCallStatus in
     uniffi_superfiles_fn_method_superfiles_remove_favorite(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * 只移除「最近打开」记录，不删除原文件。
+     */
+open func removeRecent(id: String)throws   {try rustCallWithError(FfiConverterTypeSfError_lift) {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_remove_recent(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(id),uniffiCallStatus
     )
@@ -1871,6 +2197,19 @@ open func smbListShares(host: String, port: UInt32, username: String, password: 
         FfiConverterUInt32.lower(port),
         FfiConverterString.lower(username),
         FfiConverterString.lower(password),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * 查询 SMB 主机的 NetBIOS 主机名（扫描列表展示用；拿不到返回 None）。
+     */
+open func smbNetbiosName(host: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_smb_netbios_name(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(host),uniffiCallStatus
     )
 })
 }
@@ -2029,6 +2368,19 @@ open func unmount(rootId: String) -> Bool  {
         FfiConverterString.lower(rootId),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * 解除暂停继续跑。与 `resumeTransfer`（崩溃后恢复登记的断点任务）不同，
+     * 这只作用于 registry 里还活着的 Paused 任务。
+     */
+open func unpauseTransfer(id: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_superfiles_fn_method_superfiles_unpause_transfer(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
 }
     
 open func version() -> String  {
@@ -3107,10 +3459,24 @@ public struct TransferSnapshot: Equatable, Hashable {
     public var filesTotal: UInt64
     public var current: String?
     public var error: String?
+    /**
+     * 任务创建（开始）时间，epoch 毫秒。
+     */
+    public var startedAtMs: Int64
+    /**
+     * 结束时间（完成/失败/取消），未结束为 None。
+     */
+    public var finishedAtMs: Int64?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, state: TransferState, bytesDone: UInt64, bytesTotal: UInt64, filesDone: UInt64, filesTotal: UInt64, current: String?, error: String?) {
+    public init(id: String, state: TransferState, bytesDone: UInt64, bytesTotal: UInt64, filesDone: UInt64, filesTotal: UInt64, current: String?, error: String?, 
+        /**
+         * 任务创建（开始）时间，epoch 毫秒。
+         */startedAtMs: Int64, 
+        /**
+         * 结束时间（完成/失败/取消），未结束为 None。
+         */finishedAtMs: Int64?) {
         self.id = id
         self.state = state
         self.bytesDone = bytesDone
@@ -3119,6 +3485,8 @@ public struct TransferSnapshot: Equatable, Hashable {
         self.filesTotal = filesTotal
         self.current = current
         self.error = error
+        self.startedAtMs = startedAtMs
+        self.finishedAtMs = finishedAtMs
     }
 
     
@@ -3144,7 +3512,9 @@ public struct FfiConverterTypeTransferSnapshot: FfiConverterRustBuffer {
                 filesDone: FfiConverterUInt64.read(from: &buf), 
                 filesTotal: FfiConverterUInt64.read(from: &buf), 
                 current: FfiConverterOptionString.read(from: &buf), 
-                error: FfiConverterOptionString.read(from: &buf)
+                error: FfiConverterOptionString.read(from: &buf), 
+                startedAtMs: FfiConverterInt64.read(from: &buf), 
+                finishedAtMs: FfiConverterOptionInt64.read(from: &buf)
         )
     }
 
@@ -3157,6 +3527,8 @@ public struct FfiConverterTypeTransferSnapshot: FfiConverterRustBuffer {
         FfiConverterUInt64.write(value.filesTotal, into: &buf)
         FfiConverterOptionString.write(value.current, into: &buf)
         FfiConverterOptionString.write(value.error, into: &buf)
+        FfiConverterInt64.write(value.startedAtMs, into: &buf)
+        FfiConverterOptionInt64.write(value.finishedAtMs, into: &buf)
     }
 }
 
@@ -3491,6 +3863,10 @@ public enum TransferState: Equatable, Hashable {
     
     case queued
     case running
+    /**
+     * 用户暂停（非终态）：可 unpause 继续、cancel 终止。
+     */
+    case paused
     case completed
     case failed
     case cancelled
@@ -3519,11 +3895,13 @@ public struct FfiConverterTypeTransferState: FfiConverterRustBuffer {
         
         case 2: return .running
         
-        case 3: return .completed
+        case 3: return .paused
         
-        case 4: return .failed
+        case 4: return .completed
         
-        case 5: return .cancelled
+        case 5: return .failed
+        
+        case 6: return .cancelled
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3541,16 +3919,20 @@ public struct FfiConverterTypeTransferState: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
         
         
-        case .completed:
+        case .paused:
             writeInt(&buf, Int32(3))
         
         
-        case .failed:
+        case .completed:
             writeInt(&buf, Int32(4))
         
         
-        case .cancelled:
+        case .failed:
             writeInt(&buf, Int32(5))
+        
+        
+        case .cancelled:
+            writeInt(&buf, Int32(6))
         
         }
     }
@@ -4000,7 +4382,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_clear_index() != 49058) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_clear_index_prefix() != 57166) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_compress_zip() != 5552) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_count_by_exts() != 58569) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_create_dir() != 10638) {
@@ -4013,6 +4401,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_export_to_fd() != 242) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_extract_zip() != 39734) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_favorites() != 27258) {
@@ -4030,7 +4421,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_index_dir() != 61801) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_index_dir_full_with_progress() != 39911) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_index_dir_with_progress() != 56713) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_index_prefix_count() != 56131) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_index_subtree() != 46369) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_join() != 17171) {
@@ -4039,10 +4439,28 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_list() != 33029) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_list_by_exts() != 4443) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_list_by_exts_packed() != 58002) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_list_cached() != 43391) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_local_send_handle() != 35404) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_mount_cloud() != 26779) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_mount_dropbox() != 33186) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_mount_google_drive() != 13079) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_mount_s3() != 41490) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_mount_sftp() != 42724) {
@@ -4057,6 +4475,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_mounts() != 32210) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_pause_transfer() != 60396) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_pending_transfers() != 25004) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4069,10 +4490,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_superfiles_checksum_method_superfiles_record_open() != 3400) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_superfiles_checksum_method_superfiles_release_stream() != 23727) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_superfiles_checksum_method_superfiles_remove() != 39390) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_remove_favorite() != 21818) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_remove_recent() != 4841) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_rename() != 38276) {
@@ -4088,6 +4515,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_smb_list_shares() != 16507) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_smb_netbios_name() != 5559) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_start_copy() != 21211) {
@@ -4124,6 +4554,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_unmount() != 63226) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_superfiles_checksum_method_superfiles_unpause_transfer() != 17396) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_superfiles_checksum_method_superfiles_version() != 44088) {

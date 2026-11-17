@@ -1,0 +1,12 @@
+{
+  "module": {
+    "name": "superfiles_arkts",
+    "type": "har",
+    "deviceTypes": [
+      "default",
+      "phone",
+      "tablet",
+      "2in1"
+    ]
+  }
+}

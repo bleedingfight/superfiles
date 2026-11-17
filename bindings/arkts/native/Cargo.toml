@@ -1,0 +1,22 @@
+[package]
+name = "superfiles-arkts-native"
+version = "0.1.0"
+edition = "2021"
+publish = false
+build = "build.rs"
+
+[lib]
+name = "superfiles_arkts"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+test = false
+doctest = false
+
+[dependencies]
+napi-ohos = { version = "1", features = ["async", "napi6"] }
+napi-derive-ohos = "1"
+uniffi = "0.32.2"
+
+# Standalone crate: lives under the super-files workspace tree but must not
+# join it (different target/toolchain settings, build.rs-driven linking).
+[workspace]
