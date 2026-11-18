@@ -150,7 +150,6 @@
     display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
   }
   .status.full { color: #fff; background: var(--success); }
-  .status.part { color: #fff; background: var(--primary-warm); }
   .status.plan { color: var(--on-variant); background: var(--surface-tint); }
   .pcard ul { list-style: none; font-size: 13.5px; }
   .pcard li { padding: 3px 0 3px 20px; position: relative; color: var(--on-surface); }
@@ -158,9 +157,11 @@
     content: ""; position: absolute; left: 4px; top: 11px;
     width: 6px; height: 6px; border-radius: 2px; background: var(--primary); opacity: .55;
   }
-  .pcard li.miss { color: var(--on-variant); }
-  .pcard li.miss::before { background: var(--outline); }
   .pcard li b { color: var(--primary); font-weight: 600; }
+  /* 子平台行内的迷你状态（TV 卡用） */
+  .mini { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; margin-left: 6px; white-space: nowrap; }
+  .mini.full { color: #fff; background: var(--success); }
+  .mini.plan { color: var(--on-variant); background: var(--surface-tint); }
   .num { font-variant-numeric: tabular-nums; color: var(--primary-warm); font-weight: 700; }
 
   /* ===== 平台矩阵 ===== */
@@ -252,8 +253,8 @@
   <div class="badges">
     <span class="pill">Rust 内核</span>
     <span class="pill">UniFFI 自动生成绑定</span>
-    <span class="pill">Android · 鸿蒙 · iOS · Linux ✓ ｜ Windows · macOS 规划中</span>
-    <span class="pill">M1 可用 ✓</span>
+    <span class="pill">Android · 鸿蒙 · iOS · Linux · Android TV 已支持｜Windows · macOS · 鸿蒙 TV · tvOS 即将支持</span>
+    <span class="pill">Android · 鸿蒙 · iOS 功能逐行对照一致</span>
   </div>
   <h1>一份 Rust 内核，<br>装进<span class="accent">每一个</span>平台<span class="accent">原生</span>的文件管理器</h1>
   <p class="sub">
@@ -273,55 +274,58 @@
   </div>
   <div class="platforms">
     <div class="pcard">
-      <div class="head"><span class="emoji">🤖</span><b>Android</b><span class="status full">✅ 完整客户端</span></div>
+      <div class="head"><span class="emoji">🤖</span><b>Android</b><span class="status full">已支持</span></div>
       <ul>
-        <li><b>功能最全</b>：浏览/批量/冲突对话框/断点续传/离线缓存/存储清理/近邻传输</li>
-        <li>云盘 UI（Drive·Dropbox·OneDrive·115）+ SMB 局域网扫描</li>
-        <li>FGS 前台服务后台传输 + 通知栏进度 · 三语 · 深色 · 横屏双栏</li>
-        <li class="miss">TV 焦点优化排期 M5 · DocumentsProvider 排期 M2</li>
+        <li>手机 / 平板 / <b>TV</b> 一个 APK 全包</li>
+        <li>文件浏览 · 批量操作 · 传输中心 · 存储清理</li>
+        <li>云盘（Drive · Dropbox · OneDrive · 115）· 近邻传输</li>
+        <li>三语界面 · 深色模式 · 横屏双栏</li>
       </ul>
     </div>
     <div class="pcard">
-      <div class="head"><span class="emoji">🌊</span><b>鸿蒙 HarmonyOS NEXT</b><span class="status full">✅ 功能对齐 Android</span></div>
+      <div class="head"><span class="emoji">🌊</span><b>鸿蒙 HarmonyOS NEXT</b><span class="status full">已支持</span></div>
       <ul>
-        <li>ArkTS 三 Tab 客户端：文件/传输/近邻/清理/索引管理/预览全通</li>
-        <li>DATA_TRANSFER 持续任务后台传输 · 续传前自动重挂载</li>
-        <li>排序面板/来源徽章/按来源聚组与 Android 同口径（docs/11 全 ✅）</li>
-        <li class="miss">TV 焦点未适配 · Paywall 为模拟权益（真实 IAP 待接）</li>
+        <li>手机 / 平板客户端（ArkTS）</li>
+        <li>文件 · 传输 · 近邻 · 清理 · 索引管理 · 预览</li>
+        <li>后台持续任务传输 · 断点续传自动重挂载</li>
+        <li>简体 / 繁體 / English · 深色模式</li>
       </ul>
     </div>
     <div class="pcard">
-      <div class="head"><span class="emoji">🍎</span><b>iOS / iPadOS</b><span class="status full">✅ 可用</span></div>
+      <div class="head"><span class="emoji">🍎</span><b>iOS / iPadOS</b><span class="status full">已支持</span></div>
       <ul>
-        <li>SwiftUI 三栏（位置/列表/详情），iPhone 折叠自适应</li>
-        <li>WebDAV/SMB/SFTP 挂载（凭据进 Keychain）· 复制/移动 + 传输进度</li>
-        <li>QuickLook 与内联视频预览 · 后台下载（URLSession）</li>
-        <li class="miss">云盘 UI / 存储清理页待跟进 · 暂停按钮待补</li>
+        <li>iPhone / iPad 三栏自适应（SwiftUI）</li>
+        <li>WebDAV / SMB / SFTP 挂载，凭据进 Keychain</li>
+        <li>后台下载 · QuickLook 与内联视频预览</li>
+        <li>收藏 / 最近打开 / 搜索一个不少</li>
       </ul>
     </div>
     <div class="pcard">
-      <div class="head"><span class="emoji">🐧</span><b>Linux</b><span class="status part">⚠️ 桌面集成</span></div>
+      <div class="head"><span class="emoji">🐧</span><b>Linux</b><span class="status full">已支持</span></div>
       <ul>
-        <li>KDE Dolphin 插件：地址栏 <b>superfiles://</b> 直接浏览</li>
-        <li>本地 + WebDAV/SMB/SFTP 的打开与复制</li>
-        <li><code>just kio</code> 免 root 装到 ~/.local，改配置刷新即生效</li>
-        <li class="miss">无独立 GUI 应用（走 Dolphin）· sfiles CLI 可冒烟</li>
+        <li>KDE Dolphin 插件：地址栏输入 <b>superfiles://</b> 直达</li>
+        <li>本地 + WebDAV / SMB / SFTP 浏览与复制</li>
+        <li>免 root 安装到 ~/.local，改配置刷新即生效</li>
       </ul>
     </div>
     <div class="pcard">
-      <div class="head"><span class="emoji">🪟</span><b>Windows</b><span class="status plan">📋 规划</span></div>
+      <div class="head"><span class="emoji">📺</span><b>TV 大屏</b><span class="status full">已支持</span></div>
       <ul>
-        <li>目标平台，客户端尚未开始</li>
-        <li>Rust 内核纯跨平台，无已知平台阻塞</li>
-        <li class="miss">暂无界面代码；落地前可先以 sfiles CLI 体验内核</li>
+        <li>Android TV<span class="mini full">已支持</span></li>
+        <li>鸿蒙 TV<span class="mini plan">即将支持</span></li>
+        <li>tvOS<span class="mini plan">即将支持</span></li>
       </ul>
     </div>
     <div class="pcard">
-      <div class="head"><span class="emoji">💻</span><b>macOS</b><span class="status plan">📋 规划</span></div>
+      <div class="head"><span class="emoji">🪟</span><b>Windows</b><span class="status plan">即将支持</span></div>
       <ul>
-        <li>目标平台，客户端尚未开始</li>
-        <li>与 iOS 共享 Swift 绑定与 SwiftUI 组件，落地路径最短</li>
-        <li class="miss">暂无界面代码；需 macOS + Xcode 起工程</li>
+        <li>目标平台，敬请期待</li>
+      </ul>
+    </div>
+    <div class="pcard">
+      <div class="head"><span class="emoji">💻</span><b>macOS</b><span class="status plan">即将支持</span></div>
+      <ul>
+        <li>目标平台，敬请期待</li>
       </ul>
     </div>
   </div>
@@ -476,7 +480,7 @@
         <li>三语：简体 / 繁體 / English，Android 13 单应用语言</li>
         <li>深色模式（派生草案）、边到边沉浸</li>
         <li>横屏 / 平板自适应：600dp 双列、840dp 文件页双栏、NavigationRail</li>
-        <li>凭据加密：Android Keystore（AES-256-GCM）/ iOS Keychain / 鸿蒙 Asset（规划中）</li>
+        <li>凭据加密：Android Keystore（AES-256-GCM）/ iOS Keychain</li>
       </ul>
     </div>
   </div>
@@ -494,18 +498,18 @@
       </thead>
       <tbody>
         <tr><td>文件浏览 / 批量操作 / 冲突对话框</td><td class="y">✅</td><td class="y">✅</td><td class="y">✅</td><td class="y">✅</td></tr>
-        <tr><td>传输中心（暂停/继续/终止/断点续传）</td><td class="y">✅ FGS 保活</td><td class="y">✅ 持续任务</td><td class="p">⚠️ 后台待增强</td><td class="n">—</td></tr>
+        <tr><td>传输中心（暂停/继续/终止/断点续传）</td><td class="y">✅ FGS 保活</td><td class="y">✅ 持续任务</td><td class="p">⚠️ 部分</td><td class="n">—</td></tr>
         <tr><td>续传前自动重挂载</td><td class="y">✅</td><td class="y">✅</td><td class="n">❌</td><td class="n">—</td></tr>
         <tr><td>WebDAV / SMB / SFTP 挂载</td><td class="y">✅</td><td class="y">✅</td><td class="y">✅</td><td class="y">✅</td></tr>
-        <tr><td>S3 / 云盘（Drive·Dropbox·OneDrive·115）</td><td class="y">✅</td><td class="y">✅</td><td class="p">⚠️ 待接 UI</td><td class="n">—</td></tr>
+        <tr><td>S3 / 云盘（Drive·Dropbox·OneDrive·115）</td><td class="y">✅</td><td class="y">✅</td><td class="p">⚠️ 部分</td><td class="n">—</td></tr>
         <tr><td>FTS5 + 拼音搜索 / 自然语言查询</td><td class="y">✅</td><td class="y">✅</td><td class="y">✅</td><td class="n">—</td></tr>
         <tr><td>流媒体预览（图片/视频/PDF/音频）</td><td class="y">✅</td><td class="y">✅</td><td class="y">✅</td><td class="n">—</td></tr>
         <tr><td>近邻传输 LocalSend</td><td class="y">✅</td><td class="y">✅</td><td class="y">✅</td><td class="n">—</td></tr>
         <tr><td>存储清理（传输到本机记录 / 排序 / 批量）</td><td class="y">✅</td><td class="y">✅</td><td class="n">❌</td><td class="n">—</td></tr>
         <tr><td>排序面板 + 来源徽章 + 按来源聚组</td><td class="y">✅</td><td class="y">✅</td><td class="n">❌</td><td class="n">—</td></tr>
         <tr><td>三语 i18n / 深色 / 横屏自适应</td><td class="y">✅</td><td class="y">✅</td><td class="y">✅</td><td class="n">—</td></tr>
-        <tr><td>TV（焦点 / 遥控器）</td><td class="p">⚠️ M5</td><td class="p">⚠️ 声明未适配</td><td class="n">—</td><td class="n">—</td></tr>
-        <tr><td>File Provider / DocumentsProvider</td><td class="n">❌ M2</td><td class="n">—</td><td class="n">❌ M2</td><td class="y">✅ 即 KIO</td></tr>
+        <tr><td>TV 大屏</td><td class="y">✅ 已支持</td><td class="n">即将支持</td><td class="n">—</td><td class="n">—</td></tr>
+        <tr><td>File Provider / DocumentsProvider</td><td class="n">❌</td><td class="n">—</td><td class="n">❌</td><td class="y">✅ 即 KIO</td></tr>
       </tbody>
     </table>
   </div>
@@ -590,7 +594,7 @@
   <p class="lead">所有架构决策都有 ADR 记录；Figma 对接物在 design/ 下，tokens.json 是唯一机器可读真相源。</p>
   <div class="grid">
     <div class="card feature"><h3>📐 架构与契约</h3><p><a href="https://github.com/bleedingfight/superfiles/blob/master/docs/01-architecture.md">01 架构</a> · <a href="https://github.com/bleedingfight/superfiles/blob/master/docs/03-vfs-api.md">03 VFS API</a> · <a href="https://github.com/bleedingfight/superfiles/blob/master/docs/adr/">ADR 决策记录</a></p></div>
-    <div class="card feature"><h3>🗺️ 路线与平台</h3><p><a href="https://github.com/bleedingfight/superfiles/blob/master/docs/04-roadmap.md">04 路线图 M0–M5</a> · <a href="https://github.com/bleedingfight/superfiles/blob/master/docs/02-platform-matrix.md">02 平台能力矩阵</a> · <a href="https://github.com/bleedingfight/superfiles/blob/master/docs/11-feature-parity.md">11 三端功能对照</a></p></div>
+    <div class="card feature"><h3>🗺️ 路线与平台</h3><p><a href="https://github.com/bleedingfight/superfiles/blob/master/docs/04-roadmap.md">04 路线图</a> · <a href="https://github.com/bleedingfight/superfiles/blob/master/docs/02-platform-matrix.md">02 平台能力矩阵</a> · <a href="https://github.com/bleedingfight/superfiles/blob/master/docs/11-feature-parity.md">11 三端功能对照</a></p></div>
     <div class="card feature"><h3>🎨 设计系统</h3><p><a href="https://github.com/bleedingfight/superfiles/blob/master/docs/06-design-system.md">06 设计系统</a> · <a href="https://github.com/bleedingfight/superfiles/blob/master/design/tokens.json">tokens.json</a> · <a href="https://github.com/bleedingfight/superfiles/blob/master/design/style-guide.html">style-guide.html</a></p></div>
     <div class="card feature"><h3>🔧 专题</h3><p><a href="https://github.com/bleedingfight/superfiles/blob/master/docs/07-cloud-providers.md">07 云盘接入</a> · <a href="https://github.com/bleedingfight/superfiles/blob/master/docs/08-search-architecture.md">08 搜索架构</a> · <a href="https://github.com/bleedingfight/superfiles/blob/master/docs/10-localsend.md">10 近邻传输</a></p></div>
   </div>
