@@ -97,10 +97,6 @@
   .btn.primary:hover { text-decoration: none; filter: brightness(1.06); }
   .btn.ghost { background: var(--surface-card); border: 1px solid var(--divider); color: var(--on-surface); }
   .btn.ghost:hover { text-decoration: none; border-color: var(--primary); }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-top: 44px; }
-  .stat { background: var(--surface-card); border: 1px solid var(--divider); border-radius: var(--radius-m); padding: 18px 20px; }
-  .stat b { display: block; font-size: 26px; color: var(--primary); }
-  .stat span { font-size: 13px; color: var(--on-variant); }
 
   /* ===== 架构图 ===== */
   .arch { display: grid; gap: 14px; }
@@ -120,7 +116,8 @@
   .arch-note { font-size: 13px; color: var(--on-variant); margin-top: 14px; }
 
   /* ===== 功能网格 ===== */
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  /* min(320px,100%)：360px 手机屏（内容宽 312px）下不溢出，PC 上仍是多列 */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 16px; }
   .feature h3 { display: flex; align-items: center; gap: 10px; }
   .feature .icon {
     width: 34px; height: 34px; border-radius: 9px; flex: none;
@@ -136,6 +133,34 @@
     opacity: .55;
   }
   .feature li b { color: var(--primary); font-weight: 600; }
+  /* ===== 平台支持卡 ===== */
+  .pfacts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 40px; }
+  .pfact {
+    font-size: 12.5px; padding: 4px 12px; border-radius: 999px;
+    background: var(--surface-card); border: 1px solid var(--divider); color: var(--on-variant);
+  }
+  .pfact b { color: var(--primary); }
+  .platforms { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 14px; margin-top: 16px; }
+  .pcard { background: var(--surface-card); border: 1px solid var(--divider); border-radius: var(--radius-m); padding: 20px; }
+  .pcard .head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .pcard .head .emoji { font-size: 22px; }
+  .pcard .head b { font-size: 16px; }
+  .pcard .head .os { margin-left: auto; font-size: 12px; color: var(--on-variant); white-space: nowrap; }
+  .status {
+    display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  }
+  .status.full { color: #fff; background: var(--success); }
+  .status.part { color: #fff; background: var(--primary-warm); }
+  .status.plan { color: var(--on-variant); background: var(--surface-tint); }
+  .pcard ul { list-style: none; font-size: 13.5px; }
+  .pcard li { padding: 3px 0 3px 20px; position: relative; color: var(--on-surface); }
+  .pcard li::before {
+    content: ""; position: absolute; left: 4px; top: 11px;
+    width: 6px; height: 6px; border-radius: 2px; background: var(--primary); opacity: .55;
+  }
+  .pcard li.miss { color: var(--on-variant); }
+  .pcard li.miss::before { background: var(--outline); }
+  .pcard li b { color: var(--primary); font-weight: 600; }
   .num { font-variant-numeric: tabular-nums; color: var(--primary-warm); font-weight: 700; }
 
   /* ===== 平台矩阵 ===== */
@@ -185,10 +210,24 @@
   footer .copy { max-width: var(--maxw); margin: 0 auto; padding: 0 24px 28px; font-size: 12.5px; color: var(--outline); }
 
   @media (max-width: 720px) {
-    nav.links { display: none; }
-    .hero h1 { font-size: 32px; }
+    /* 小屏导航：横向滚动条替代隐藏的锚点，章节跳转保留 */
+    .nav-inner { gap: 12px; padding: 0 12px; }
+    nav.links {
+      display: flex; margin-left: 0; overflow-x: auto; scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    nav.links::-webkit-scrollbar { display: none; }
+    nav.links a { white-space: nowrap; padding: 6px 10px; font-size: 13px; }
+    .brand span:last-child, .brand { font-size: 0; gap: 0; }
+    .brand .logo { font-size: 15px; }
+    section { padding: 52px 16px 8px; }
+    .hero { padding-top: 56px; }
+    .hero h1 { font-size: 30px; }
+    .hero p.sub { font-size: 16px; }
+    h2 { font-size: 24px; }
     .arch-layer { grid-template-columns: 1fr; }
     .arch-tag { justify-content: flex-start; padding: 8px 14px; }
+    .pcard .head { flex-wrap: wrap; }
   }
 </style>
 </head>
@@ -213,7 +252,7 @@
   <div class="badges">
     <span class="pill">Rust 内核</span>
     <span class="pill">UniFFI 自动生成绑定</span>
-    <span class="pill">Android · 鸿蒙 NEXT · iOS · Linux(KDE)</span>
+    <span class="pill">Android · 鸿蒙 · iOS · Linux ✓ ｜ Windows · macOS 规划中</span>
     <span class="pill">M1 可用 ✓</span>
   </div>
   <h1>一份 Rust 内核，<br>装进<span class="accent">每一个</span>平台<span class="accent">原生</span>的文件管理器</h1>
@@ -226,11 +265,65 @@
     <a class="btn primary" href="#quickstart">快速开始</a>
     <a class="btn ghost" href="#features">浏览核心功能</a>
   </div>
-  <div class="stats">
-    <div class="stat"><b>4</b><span>客户端平台（Android / 鸿蒙 / iOS / Linux）</span></div>
-    <div class="stat"><b>9</b><span>存储后端：本地 · WebDAV · SMB · SFTP · S3 · 4 家云盘</span></div>
-    <div class="stat"><b>1</b><span>份 Rust 内核，30+ 内核/引擎测试守护</span></div>
-    <div class="stat"><b>3</b><span>界面语言：简体 / 繁體 / English</span></div>
+  <!-- ===== 平台支持一览 ===== -->
+  <div class="pfacts">
+    <span class="pfact"><b>9</b> 存储后端：本地 · WebDAV · SMB · SFTP · S3 · 4 家云盘</span>
+    <span class="pfact"><b>1</b> 份 Rust 内核，30+ 内核/引擎测试守护</span>
+    <span class="pfact"><b>3</b> 界面语言：简体 / 繁體 / English</span>
+  </div>
+  <div class="platforms">
+    <div class="pcard">
+      <div class="head"><span class="emoji">🤖</span><b>Android</b><span class="status full">✅ 完整客户端</span></div>
+      <ul>
+        <li><b>功能最全</b>：浏览/批量/冲突对话框/断点续传/离线缓存/存储清理/近邻传输</li>
+        <li>云盘 UI（Drive·Dropbox·OneDrive·115）+ SMB 局域网扫描</li>
+        <li>FGS 前台服务后台传输 + 通知栏进度 · 三语 · 深色 · 横屏双栏</li>
+        <li class="miss">TV 焦点优化排期 M5 · DocumentsProvider 排期 M2</li>
+      </ul>
+    </div>
+    <div class="pcard">
+      <div class="head"><span class="emoji">🌊</span><b>鸿蒙 HarmonyOS NEXT</b><span class="status full">✅ 功能对齐 Android</span></div>
+      <ul>
+        <li>ArkTS 三 Tab 客户端：文件/传输/近邻/清理/索引管理/预览全通</li>
+        <li>DATA_TRANSFER 持续任务后台传输 · 续传前自动重挂载</li>
+        <li>排序面板/来源徽章/按来源聚组与 Android 同口径（docs/11 全 ✅）</li>
+        <li class="miss">TV 焦点未适配 · Paywall 为模拟权益（真实 IAP 待接）</li>
+      </ul>
+    </div>
+    <div class="pcard">
+      <div class="head"><span class="emoji">🍎</span><b>iOS / iPadOS</b><span class="status full">✅ 可用</span></div>
+      <ul>
+        <li>SwiftUI 三栏（位置/列表/详情），iPhone 折叠自适应</li>
+        <li>WebDAV/SMB/SFTP 挂载（凭据进 Keychain）· 复制/移动 + 传输进度</li>
+        <li>QuickLook 与内联视频预览 · 后台下载（URLSession）</li>
+        <li class="miss">云盘 UI / 存储清理页待跟进 · 暂停按钮待补</li>
+      </ul>
+    </div>
+    <div class="pcard">
+      <div class="head"><span class="emoji">🐧</span><b>Linux</b><span class="status part">⚠️ 桌面集成</span></div>
+      <ul>
+        <li>KDE Dolphin 插件：地址栏 <b>superfiles://</b> 直接浏览</li>
+        <li>本地 + WebDAV/SMB/SFTP 的打开与复制</li>
+        <li><code>just kio</code> 免 root 装到 ~/.local，改配置刷新即生效</li>
+        <li class="miss">无独立 GUI 应用（走 Dolphin）· sfiles CLI 可冒烟</li>
+      </ul>
+    </div>
+    <div class="pcard">
+      <div class="head"><span class="emoji">🪟</span><b>Windows</b><span class="status plan">📋 规划</span></div>
+      <ul>
+        <li>目标平台，客户端尚未开始</li>
+        <li>Rust 内核纯跨平台，无已知平台阻塞</li>
+        <li class="miss">暂无界面代码；落地前可先以 sfiles CLI 体验内核</li>
+      </ul>
+    </div>
+    <div class="pcard">
+      <div class="head"><span class="emoji">💻</span><b>macOS</b><span class="status plan">📋 规划</span></div>
+      <ul>
+        <li>目标平台，客户端尚未开始</li>
+        <li>与 iOS 共享 Swift 绑定与 SwiftUI 组件，落地路径最短</li>
+        <li class="miss">暂无界面代码；需 macOS + Xcode 起工程</li>
+      </ul>
+    </div>
   </div>
 </section>
 
