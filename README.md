@@ -168,5 +168,6 @@ iPad 版为三栏 `NavigationSplitView`：
 - `docs/05-icons.md` — 双端文件图标规范（fallback 链 + 特化表）
 - `docs/06-design-system.md` — 双端设计系统基准（tokens、组件状态表、TV 焦点模型）
 - `docs/10-localsend.md` — 近邻传输（LocalSend 兼容：HTTPS/发现/接收/发送）
+- `website/` — 自包含静态产品站（`index.html` 单文件，配色取自 tokens.json；推送后由 GitHub Actions 部署到 Pages）
 - `design/` — Figma 对接物：`tokens.json` (W3C DTCG)、`style-guide.html`（可视参考稿）、`screens.md`（画面清单）
 - `docs/adr/` — 架构决策记录
